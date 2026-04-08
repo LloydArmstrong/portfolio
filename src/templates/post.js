@@ -2,8 +2,8 @@ import React from 'react';
 import { graphql, Link } from 'gatsby';
 import kebabCase from 'lodash/kebabCase';
 import PropTypes from 'prop-types';
-import { Helmet } from 'react-helmet';
 import styled from 'styled-components';
+import Seo from '@components/head';
 import { Layout } from '@components';
 
 const StyledPostContainer = styled.main`
@@ -56,8 +56,6 @@ const PostTemplate = ({ data, location }) => {
 
   return (
     <Layout location={location}>
-      <Helmet title={title} />
-
       <StyledPostContainer>
         <span className="breadcrumb">
           <span className="arrow">&larr;</span>
@@ -93,13 +91,22 @@ const PostTemplate = ({ data, location }) => {
 
 export default PostTemplate;
 
+export const Head = ({ data, location }) => (
+  <Seo title={data.markdownRemark.frontmatter.title} pathname={location.pathname} />
+);
+
+Head.propTypes = {
+  data: PropTypes.object.isRequired,
+  location: PropTypes.object.isRequired,
+};
+
 PostTemplate.propTypes = {
   data: PropTypes.object,
   location: PropTypes.object,
 };
 
 export const pageQuery = graphql`
-  query($path: String!) {
+  query ($path: String!) {
     markdownRemark(frontmatter: { slug: { eq: $path } }) {
       html
       frontmatter {

@@ -7,6 +7,23 @@
 const path = require('path');
 const _ = require('lodash');
 
+exports.createSchemaCustomization = ({ actions }) => {
+  const { createTypes } = actions;
+  createTypes(`
+    type MarkdownRemarkFrontmatter {
+      title: String
+      description: String
+      date: Date @dateformat
+      slug: String
+      draft: Boolean
+      tags: [String]
+    }
+    type MarkdownRemark implements Node {
+      frontmatter: MarkdownRemarkFrontmatter
+    }
+  `);
+};
+
 exports.createPages = async ({ actions, graphql, reporter }) => {
   const { createPage } = actions;
   const postTemplate = path.resolve(`src/templates/post.js`);
@@ -16,7 +33,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     {
       postsRemark: allMarkdownRemark(
         filter: { fileAbsolutePath: { regex: "/content/posts/" } }
-        sort: { order: DESC, fields: [frontmatter___date] }
+        sort: { frontmatter: { date: DESC } }
         limit: 1000
       ) {
         edges {
@@ -28,7 +45,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         }
       }
       tagsGroup: allMarkdownRemark(limit: 2000) {
-        group(field: frontmatter___tags) {
+        group(field: { frontmatter: { tags: SELECT } }) {
           fieldValue
         }
       }

@@ -9,7 +9,6 @@ module.exports = {
     image: '/og.png', // Path to your image you placed in the 'static' folder
   },
   plugins: [
-    `gatsby-plugin-react-helmet`,
     `gatsby-plugin-styled-components`,
     `gatsby-plugin-image`,
     `gatsby-plugin-sharp`,
@@ -149,9 +148,9 @@ module.exports = {
       },
     },
     {
-      resolve: `gatsby-plugin-google-analytics`,
+      resolve: `gatsby-plugin-google-gtag`,
       options: {
-        trackingId: 'UA-45666519-2',
+        trackingIds: ['UA-45666519-2'],
       },
     },
   ],

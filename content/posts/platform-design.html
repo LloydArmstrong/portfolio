@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Platform Engineering Design — Marketplace Microservices</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');
+
+  :root {
+    --ink: #1a1a18;
+    --ink2: #3d3d38;
+    --ink3: #6b6b64;
+    --line: #d4d2c9;
+    --line2: #e8e6df;
+    --bg: #faf9f6;
+    --bg2: #f2f0e9;
+    --accent: #1d5c9e;
+    --accent-light: #e6f0fb;
+    --accent2: #2d7a5f;
+    --accent2-light: #e3f4ed;
+    --warn: #9a4f12;
+    --warn-light: #fdf0e6;
+    --red: #8b2020;
+    --red-light: #fdeaea;
+    --serif: 'Source Serif 4', Georgia, serif;
+    --mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --sans: system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--ink);
+    background: var(--bg);
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 40px 120px;
+  }
+
+  /* ---- COVER ---- */
+  .cover {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 48px;
+    margin-bottom: 64px;
+  }
+  .cover-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 24px;
+  }
+  .cover h1 {
+    font-size: 42px;
+    font-weight: 300;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 20px;
+  }
+  .cover h1 em {
+    font-style: italic;
+    font-weight: 300;
+  }
+  .cover-meta {
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink3);
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .cover-meta span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); display: inline-block; }
+
+  /* ---- TOC ---- */
+  .toc {
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 32px 36px;
+    margin-bottom: 64px;
+  }
+  .toc-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 20px;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+  }
+  .toc ol li {
+    counter-increment: toc;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 4px 0;
+    font-family: var(--sans);
+    font-size: 14px;
+  }
+  .toc ol li::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink3);
+    min-width: 28px;
+  }
+  .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .toc a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+
+  /* ---- SECTIONS ---- */
+  .section {
+    margin-bottom: 80px;
+    padding-bottom: 80px;
+    border-bottom: 1px solid var(--line);
+  }
+  .section:last-child { border-bottom: none; }
+
+  .section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 40px;
+  }
+  .section-num {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink3);
+    padding-top: 6px;
+    min-width: 28px;
+  }
+  .section-title {
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+
+  /* ---- SUB-SECTIONS ---- */
+  .subsection {
+    margin-bottom: 48px;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line2);
+  }
+  h4 {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 24px 0 8px;
+  }
+
+  p { margin-bottom: 14px; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ---- CALLOUT BOXES ---- */
+  .callout {
+    border-left: 3px solid var(--line);
+    padding: 16px 20px;
+    margin: 24px 0;
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .callout.decision { border-left-color: var(--accent); background: var(--accent-light); }
+  .callout.skip { border-left-color: var(--red); background: var(--red-light); }
+  .callout.tradeoff { border-left-color: var(--warn); background: var(--warn-light); }
+  .callout.note { border-left-color: var(--accent2); background: var(--accent2-light); }
+  .callout-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .decision .callout-label { color: var(--accent); }
+  .skip .callout-label { color: var(--red); }
+  .tradeoff .callout-label { color: var(--warn); }
+  .note .callout-label { color: var(--accent2); }
+
+  /* ---- CODE BLOCKS ---- */
+  pre {
+    background: #1e1e1c;
+    color: #d4d2c9;
+    border-radius: 4px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    margin: 20px 0;
+  }
+  code { font-family: var(--mono); font-size: 0.88em; }
+  p code, li code {
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+
+  /* ---- DIAGRAM WRAPPERS ---- */
+  .diagram {
+    margin: 32px 0;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 24px;
+    overflow-x: auto;
+  }
+  .diagram-caption {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--ink3);
+    margin-top: 12px;
+    text-align: center;
+    font-style: italic;
+  }
+  svg { display: block; max-width: 100%; }
+
+  /* ---- TABLES ---- */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--sans);
+    font-size: 13.5px;
+    margin: 20px 0;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--ink);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink2);
+  }
+  .data-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line2);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--bg2); }
+
+  /* ---- TAG PILLS ---- */
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    margin-right: 4px;
+    margin-bottom: 2px;
+  }
+  .tag-blue { background: var(--accent-light); color: var(--accent); border: 1px solid #b0cef0; }
+  .tag-green { background: var(--accent2-light); color: var(--accent2); border: 1px solid #9dd5be; }
+  .tag-orange { background: var(--warn-light); color: var(--warn); border: 1px solid #f0c5a0; }
+  .tag-red { background: var(--red-light); color: var(--red); border: 1px solid #f0b8b8; }
+
+  ul, ol { padding-left: 1.4em; }
+  li { margin-bottom: 6px; }
+  li:last-child { margin-bottom: 0; }
+
+  /* ---- HIGHLIGHT ROW ---- */
+  .highlight-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .highlight-card {
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 16px 18px;
+    font-family: var(--sans);
+  }
+  .highlight-card-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink3);
+    margin-bottom: 4px;
+  }
+  .highlight-card-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* SVG diagram styles */
+  .d-box { fill: #f8f7f4; stroke: #c8c6be; stroke-width: 1; }
+  .d-box-blue { fill: #e8f2fd; stroke: #5a9de8; stroke-width: 1; }
+  .d-box-green { fill: #e4f5ec; stroke: #5ab88a; stroke-width: 1; }
+  .d-box-orange { fill: #fdf4e8; stroke: #e0a060; stroke-width: 1; }
+  .d-box-red { fill: #fdf0f0; stroke: #e08080; stroke-width: 1; }
+  .d-box-purple { fill: #f3effe; stroke: #9b7de0; stroke-width: 1; }
+  .d-label { font-family: system-ui, sans-serif; font-size: 12px; fill: #3d3d38; }
+  .d-label-sm { font-family: system-ui, sans-serif; font-size: 10px; fill: #6b6b64; }
+  .d-label-bold { font-family: system-ui, sans-serif; font-size: 12px; fill: #1a1a18; font-weight: 600; }
+  .d-arrow { stroke: #888880; stroke-width: 1.2; fill: none; marker-end: url(#arr); }
+  .d-arrow-blue { stroke: #3a7cd0; stroke-width: 1.5; fill: none; marker-end: url(#arr-blue); }
+  .d-arrow-dashed { stroke: #aaa; stroke-width: 1; fill: none; stroke-dasharray: 4 3; marker-end: url(#arr); }
+  .d-container { fill: none; stroke: #c8c6be; stroke-width: 1; stroke-dasharray: 5 3; }
+  .d-container-label { font-family: system-ui, sans-serif; font-size: 11px; fill: #8a8a82; letter-spacing: 0.04em; }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-label">Platform Engineering Design Document</div>
+  <h1>Marketplace Platform<br><em>Architecture & Operational Design</em></h1>
+  <div class="cover-meta">
+    <span><span class="dot"></span>15 microservices · GKE · GCP</span>
+    <span><span class="dot"></span>4 environments: dev / int / qa / prod</span>
+    <span><span class="dot"></span>Monorepo (Nx) · FluxCD · Terraform</span>
+    <span><span class="dot"></span>Sections: CI/CD, K8s, Deployment, Secrets, DX, Observability, Ephemeral Envs</span>
+  </div>
+</div>
+
+<!-- TOC -->
+<div class="toc">
+  <div class="toc-title">Contents</div>
+  <ol>
+    <li><a href="#ci-cd">CI/CD Pipeline — Github Actions</a></li>
+    <li><a href="#k8s">Kubernetes Platform Setup</a></li>
+    <li><a href="#deployment">Deployment Strategies</a></li>
+    <li><a href="#secrets">Secret Management</a></li>
+    <li><a href="#dx">Developer Experience &amp; Self-service</a></li>
+    <li><a href="#observability">Observability &amp; Incident Readiness</a></li>
+    <li><a href="#ephemeral">On-demand / Ephemeral Environments</a></li>
+  </ol>
+</div>
+
+<!-- ================================================================ -->
+<!-- SECTION 1: CI/CD -->
+<!-- ================================================================ -->
+<div class="section" id="ci-cd">
+  <div class="section-header">
+    <span class="section-num">01</span>
+    <h2 class="section-title">CI/CD Pipeline — Github Actions</h2>
+  </div>
+
+  <!-- Context -->
+  <div class="subsection">
+    <h3>Context &amp; Problem</h3>
+    <p>With 15 services in a single Nx monorepo spread across four environments, the naive approach is one workflow file per service. That produces 15 files that are mostly identical, diverge gradually, and become impossible to audit. The real problem is dual: <em>avoiding unnecessary builds</em> when a change doesn't touch a given service, and <em>ensuring every service that does change goes through the same quality gates</em> before reaching production.</p>
+    <p>The secondary constraint is the GitOps boundary. CI owns building and tagging images; FluxCD owns deploying them. Those two concerns must stay cleanly separated or you end up with half-deployed states and no single source of truth.</p>
+  </div>
+
+  <!-- Pipeline Structure -->
+  <div class="subsection">
+    <h3>Proposed Solution — Pipeline Structure</h3>
+
+    <h4>Shared reusable workflows</h4>
+    <p>Everything lives in a single monorepo. The Github Actions setup uses one <em>reusable workflow</em> (<code>.github/workflows/service-ci.yml</code>) that accepts the service name and type as inputs. Individual services have thin caller workflows that simply invoke the shared one. This means the logic for linting, testing, building, and pushing lives in one place.</p>
+
+    <pre># .github/workflows/service-ci.yml  (reusable, called by each service)
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+      service_type:
+        required: true
+        type: string   # 'api' | 'frontend' | 'worker'
+    secrets:
+      inherit: true   # caller passes through GCP SA creds, etc.
+
+jobs:
+  affected-check:
+    runs-on: ubuntu-latest
+    outputs:
+      affected: ${{ steps.nx.outputs.affected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: nrwl/nx-set-shas@v4
+      - id: nx
+        run: |
+          AFFECTED=$(npx nx show projects --affected --json | jq -r '.[] | select(. == "${{ inputs.service_name }}")')
+          echo "affected=$( [ -n '$AFFECTED' ] && echo 'true' || echo 'false' )" >> $GITHUB_OUTPUT
+
+  build-and-test:
+    needs: affected-check
+    if: needs.affected-check.outputs.affected == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Nx caching (remote cache via Nx Cloud or GCS bucket)
+      - run: npm ci
+
+      - name: Lint
+        run: npx nx lint ${{ inputs.service_name }}
+
+      - name: Test
+        run: npx nx test ${{ inputs.service_name }} --coverage
+
+      - name: Build
+        run: npx nx build ${{ inputs.service_name }} --configuration=production
+
+      - name: Auth to GCR
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_JSON }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/${{ inputs.service_name }}/Dockerfile
+          push: true
+          tags: |
+            europe-west1-docker.pkg.dev/my-project/marketplace/${{ inputs.service_name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update GitOps image tag (dev)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Patch the HelmRelease values in the gitops repo
+          git clone https://x-access-token:${{ secrets.GITOPS_PAT }}@github.com/org/gitops.git
+          cd gitops
+          yq e ".image.tag = \"${{ github.sha }}\"" \
+            -i envs/dev/apps/${{ inputs.service_name }}/values.yaml
+          git config user.email "ci@marketplace.internal"
+          git config user.name "CI Bot"
+          git commit -am "chore: bump ${{ inputs.service_name }} to ${{ github.sha }} [dev]"
+          git push</pre>
+
+    <p>Each service has a three-line caller workflow:</p>
+
+    <pre># apps/order-service/.github/workflows/ci.yml
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: ./.github/workflows/service-ci.yml
+    with:
+      service_name: order-service
+      service_type: api
+    secrets: inherit</pre>
+
+    <div class="callout decision">
+      <div class="callout-label">Decision</div>
+      Nx's <code>affected</code> command is the key mechanism for skipping unnecessary builds. It computes the dependency graph from <code>project.json</code> files and only runs tasks for projects touched by the diff. This means a change to the notification-worker doesn't trigger a build of the storefront. Remote caching (via Nx Cloud or a GCS bucket acting as a cache backend) means even affected builds are fast if the inputs haven't changed.
+    </div>
+  </div>
+
+  <!-- GitOps Repo Structure -->
+  <div class="subsection">
+    <h3>GitOps Repo Structure</h3>
+    <p>The GitOps repository is entirely separate from the application monorepo. FluxCD watches it and reconciles state into the cluster. The directory structure follows environment-then-app, not app-then-environment, because promotion is an operation on an environment, not on an app.</p>
+
+    <pre>gitops/
+├── clusters/
+│   ├── dev/
+│   │   ├── flux-system/         # Flux bootstrap (managed by Terraform)
+│   │   └── kustomization.yaml   # points to envs/dev
+│   ├── int/
+│   ├── qa/
+│   └── prod/
+│
+├── envs/
+│   ├── _base/                   # shared HelmRelease templates, ServiceAccounts
+│   │   └── apps/
+│   │       ├── api-base/
+│   │       │   └── helmrelease.yaml
+│   │       └── worker-base/
+│   │           └── helmrelease.yaml
+│   ├── dev/
+│   │   ├── apps/
+│   │   │   ├── order-service/
+│   │   │   │   └── values.yaml  # image.tag: abc123, replicas: 1
+│   │   │   └── storefront/
+│   │   │       └── values.yaml
+│   │   └── kustomization.yaml
+│   ├── int/
+│   ├── qa/
+│   └── prod/
+│
+└── infrastructure/
+    ├── _base/                   # shared infra (namespaces, RBAC)
+    └── envs/                    # env-specific overrides (node pools, PDBs)</pre>
+
+    <p>Each <code>values.yaml</code> is tiny: it overrides only what differs per environment (image tag, replica count, resource limits, feature flags). The base <code>HelmRelease</code> template carries everything common across envs. This avoids configuration drift and makes promotion a diff of just the image tag.</p>
+  </div>
+
+  <!-- Image Tagging & Promotion -->
+  <div class="subsection">
+    <h3>Image Tagging &amp; Promotion</h3>
+
+    <div class="diagram">
+      <svg viewBox="0 0 740 260" xmlns="http://www.w3.org/2000/svg" width="100%">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#888880" stroke-width="1.5"/>
+          </marker>
+          <marker id="arr-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#3a7cd0" stroke-width="1.5"/>
+          </marker>
+        </defs>
+
+        <!-- Push to main -->
+        <rect x="20" y="100" width="100" height="44" rx="4" class="d-box"/>
+        <text x="70" y="118" text-anchor="middle" class="d-label-bold">git push</text>
+        <text x="70" y="132" text-anchor="middle" class="d-label-sm">main branch</text>
+
+        <!-- CI -->
+        <rect x="160" y="85" width="110" height="74" rx="4" class="d-box-blue"/>
+        <text x="215" y="108" text-anchor="middle" class="d-label-bold">CI</text>
+        <text x="215" y="124" text-anchor="middle" class="d-label-sm">lint · test · build</text>
+        <text x="215" y="139" text-anchor="middle" class="d-label-sm">push :&lt;sha&gt;</text>
+
+        <!-- Dev -->
+        <rect x="320" y="60" width="80" height="44" rx="4" class="d-box-green"/>
+        <text x="360" y="79" text-anchor="middle" class="d-label-bold">dev</text>
+        <text x="360" y="93" text-anchor="middle" class="d-label-sm">auto on merge</text>
+
+        <!-- Int -->
+        <rect x="320" y="120" width="80" height="44" rx="4" class="d-box-orange"/>
+        <text x="360" y="139" text-anchor="middle" class="d-label-bold">int</text>
+        <text x="360" y="153" text-anchor="middle" class="d-label-sm">smoke tests pass</text>
+
+        <!-- QA -->
+        <rect x="450" y="60" width="80" height="44" rx="4" class="d-box-orange"/>
+        <text x="490" y="79" text-anchor="middle" class="d-label-bold">qa</text>
+        <text x="490" y="93" text-anchor="middle" class="d-label-sm">manual approval</text>
+
+        <!-- Prod -->
+        <rect x="580" y="90" width="80" height="44" rx="4" class="d-box-red"/>
+        <text x="620" y="109" text-anchor="middle" class="d-label-bold">prod</text>
+        <text x="620" y="123" text-anchor="middle" class="d-label-sm">approval required</text>
+
+        <!-- Arrows -->
+        <line x1="120" y1="122" x2="158" y2="122" class="d-arrow"/>
+        <line x1="270" y1="108" x2="310" y2="88" class="d-arrow"/>
+        <line x1="270" y1="130" x2="310" y2="140" class="d-arrow-dashed"/>
+        <line x1="400" y1="82" x2="448" y2="82" class="d-arrow-dashed"/>
+        <line x1="530" y1="82" x2="568" y2="105" class="d-arrow-dashed"/>
+        <line x1="400" y1="142" x2="448" y2="88" class="d-arrow-dashed"/>
+
+        <!-- Tag label -->
+        <text x="155" y="48" text-anchor="middle" class="d-label-sm" style="font-style:italic">image tagged :abc1234 (immutable sha)</text>
+        <text x="520" y="175" text-anchor="middle" class="d-label-sm">promotion = PR bumping</text>
+        <text x="520" y="187" text-anchor="middle" class="d-label-sm">values.yaml image.tag</text>
+
+        <!-- Legend -->
+        <line x1="20" y1="230" x2="50" y2="230" class="d-arrow" stroke-width="1.2"/>
+        <text x="56" y="234" class="d-label-sm">auto</text>
+        <line x1="100" y1="230" x2="130" y2="230" class="d-arrow-dashed"/>
+        <text x="136" y="234" class="d-label-sm">PR + approval</text>
+      </svg>
+      <div class="diagram-caption">Image promotion flow. The SHA tag is immutable. Promotion is a GitOps PR that bumps the tag in the target environment's values.yaml.</div>
+    </div>
+
+    <p>Images are tagged with the commit SHA only — no <code>:latest</code>, no semver at this layer. The SHA is the single source of truth connecting a running container back to a commit. Semver tags are optional additions for human-readability but never used as the deployment reference. Every image is built once and promoted, never rebuilt per environment.</p>
+
+    <p>Promotion works by opening a pull request in the GitOps repo that bumps the image tag in the target environment's <code>values.yaml</code>. For dev, CI does this automatically on merge. For int and above, it requires a PR and at least one human approval. For prod, the approval gate is enforced by Github's <em>required reviewers</em> on the environment protection rules, not by convention.</p>
+
+    <div class="callout tradeoff">
+      <div class="callout-label">Trade-off</div>
+      An alternative is to use FluxCD's Image Automation Controller to watch the registry and bump tags automatically. This removes the GitOps PR step and is useful in high-velocity teams. The downside is that it reduces auditability and makes it harder to pause deployments during incidents. For a 15-service marketplace with a prod environment, the extra friction of a PR is worth it.
+    </div>
+  </div>
+
+  <!-- Gates -->
+  <div class="subsection">
+    <h3>Preventing Broken Services from Reaching Prod</h3>
+    <p>The quality gate is a layered system, not a single check:</p>
+    <ul>
+      <li><strong>PR gate:</strong> lint, unit tests, and build must pass on every PR before merge. Branch protection rules enforce this.</li>
+      <li><strong>Integration gate:</strong> after automatic deployment to <code>int</code>, a smoke test job runs against the live service. If it fails, the FluxCD <code>HelmRelease</code> is left in a <code>Failed</code> state and alerts fire. The tag is not promoted to QA.</li>
+      <li><strong>QA gate:</strong> manual sign-off by QA or the service owner. This is a required reviewer on the PR, not a chat message.</li>
+      <li><strong>Prod gate:</strong> required approval from a second engineer (not the author). Environment protection rules in Github enforce this even if the author has merge rights.</li>
+      <li><strong>Post-deploy:</strong> FluxCD health checks (via <code>HealthChecks</code> on the <code>HelmRelease</code>) verify that the new pods reach <code>Running</code> state. If they don't within a timeout, Flux marks the release failed and Prometheus fires an alert. Rollback is a git revert of the tag bump PR.</li>
+    </ul>
+
+    <div class="callout skip">
+      <div class="callout-label">What I'd skip</div>
+      Automated canary analysis tied to Flagger or Argo Rollouts is powerful but adds significant operational surface area. For most services here it's over-engineering. The exception is the high-RPS API services — those get manual canary promotion via weighted ingress, described in the deployment strategies section. Full automated Flagger rollouts with metric analysis can be added later when the team has the observability maturity to define meaningful promotion gates.
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SECTION 2: K8s Platform -->
+<!-- ================================================================ -->
+<div class="section" id="k8s">
+  <div class="section-header">
+    <span class="section-num">02</span>
+    <h2 class="section-title">Kubernetes Platform Setup</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>Context &amp; Problem</h3>
+    <p>Most application engineers don't want to learn Kubernetes — they want to deploy their service and go home. The platform team's job is to make that possible without exposing raw Kubernetes API surface. The challenge is providing enough flexibility for the 15 services while keeping the cognitive overhead low enough that engineers don't route around the platform.</p>
+    <p>The secondary concern is blast radius. With 15 services in one cluster, a badly-configured deployment shouldn't be able to consume all cluster resources, reach production secrets in a staging namespace, or break other teams' services.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Cluster Structure</h3>
+    <p>One GKE Autopilot cluster per environment is the right level of isolation for this size. Autopilot removes node management entirely — Google provisions nodes on demand based on pod resource requests, which eliminates the node sizing problem and removes the operational burden of managing node pools. This is a significant advantage for a small platform team.</p>
+
+    <div class="callout tradeoff">
+      <div class="callout-label">Trade-off: Autopilot vs Standard</div>
+      Autopilot has constraints: no DaemonSets (so you lose node-level log agents — use the GKE-integrated logging instead), no privileged containers, limited node pool customization. For a marketplace running NestJS and React workloads, none of these are blockers. Standard mode makes sense if you need GPUs, custom node images, or workloads with unusual host requirements. It doesn't here.
+    </div>
+
+    <p>Namespaces follow the pattern <code>&lt;team&gt;-&lt;component&gt;</code> rather than one namespace per service. This keeps RBAC manageable while still providing isolation boundaries.</p>
+
+    <pre>namespaces:
+  - marketplace-api       # 8 NestJS REST/GraphQL services
+  - marketplace-workers   # 5 worker services
+  - marketplace-frontend  # 2 Next.js instances
+  - marketplace-infra     # Redis, monitoring stack
+  - flux-system           # FluxCD</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Resource Requests, Limits, and Autoscaling</h3>
+
+    <p>Resource requests are mandatory — Kubernetes can't schedule pods or make autoscaling decisions without them. Limits are more nuanced. CPU limits cause throttling even when the node has spare capacity, which is counterintuitive and leads to latency spikes. The approach here is different for CPU and memory:</p>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Service type</th>
+          <th>CPU request</th>
+          <th>CPU limit</th>
+          <th>Memory request</th>
+          <th>Memory limit</th>
+          <th>HPA</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>NestJS API (10–3000 RPS)</td>
+          <td>200m</td>
+          <td><em>none</em></td>
+          <td>256Mi</td>
+          <td>512Mi</td>
+          <td>CPU 60%, min 2, max 20</td>
+        </tr>
+        <tr>
+          <td>Next.js frontend (low load)</td>
+          <td>100m</td>
+          <td>500m</td>
+          <td>256Mi</td>
+          <td>512Mi</td>
+          <td>CPU 70%, min 1, max 4</td>
+        </tr>
+        <tr>
+          <td>NestJS worker (spikey)</td>
+          <td>250m</td>
+          <td><em>none</em></td>
+          <td>256Mi</td>
+          <td>512Mi</td>
+          <td>KEDA — Pub/Sub backlog</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>CPU limits are deliberately omitted for the API and worker services. The reasoning: Node.js is single-threaded by nature; CPU throttling at the container level creates latency spikes that look like application slowness. Memory limits are kept because unbounded memory growth is a real failure mode (memory leaks) and needs to cause an OOMKill rather than affecting other pods on the node.</p>
+
+    <p>For workers, KEDA replaces the standard HPA. Workers are driven by Pub/Sub queue depth, not CPU. A worker that has 10,000 messages in its subscription needs more replicas regardless of what the CPU metric says.</p>
+
+    <pre># KEDA ScaledObject for a worker service
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: notification-worker
+  namespace: marketplace-workers
+spec:
+  scaleTargetRef:
+    name: notification-worker
+  minReplicaCount: 1
+  maxReplicaCount: 30
+  cooldownPeriod: 60
+  triggers:
+    - type: gcp-pubsub
+      metadata:
+        subscriptionName: notification-worker-sub
+        subscriptionSize: "100"   # scale up when backlog > 100 msgs
+        credentialsFromEnv: GOOGLE_APPLICATION_CREDENTIALS</pre>
+
+    <div class="callout note">
+      <div class="callout-label">Note on Autopilot + KEDA</div>
+      GKE Autopilot supports KEDA via the GKE Add-on. Nodes are provisioned as pods are scheduled, so the scale-from-zero behaviour works correctly — Autopilot provisions a node when KEDA spins up a new pod. Scale-to-zero is also supported, which eliminates idle worker costs during quiet periods.
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>Abstractions for Service Deployment</h3>
+
+    <p>No service team writes raw Kubernetes manifests. Every service is deployed via a shared Helm chart (<code>charts/marketplace-service</code>) that wraps Deployment, Service, HPA, ServiceAccount, PodDisruptionBudget, and NetworkPolicy into a single values interface. Teams interact only with <code>values.yaml</code>.</p>
+
+    <pre># charts/marketplace-service/values.yaml  (what a service team sets)
+image:
+  repository: europe-west1-docker.pkg.dev/my-project/marketplace/order-service
+  tag: abc1234
+
+service:
+  port: 3000
+  type: api   # 'api' | 'worker' | 'frontend'
+
+replicas:
+  min: 2
+  max: 15
+
+env:
+  NODE_ENV: production
+
+envFromSecrets:
+  - secretName: order-service-secrets
+    keys: [DB_PASSWORD, JWT_SECRET]
+
+resources:
+  preset: api   # maps to the resource defaults in the table above
+
+healthCheck:
+  path: /health
+  port: 3000</pre>
+
+    <p>The chart handles everything else: anti-affinity rules, topology spread constraints for zone distribution, the default NetworkPolicy allowing only intra-namespace + ingress-controller traffic, the ServiceAccount linked to Workload Identity, and the PodDisruptionBudget ensuring at least one replica stays up during node drain.</p>
+
+    <div class="callout decision">
+      <div class="callout-label">Decision: Helm chart over CRD-based platform</div>
+      Tools like Crossplane's OAM or KubeVela provide a richer abstraction layer. For 15 services and a small platform team, the added CRD management overhead and learning curve is not justified. A well-designed Helm chart with sensible defaults gets 95% of the value with 20% of the complexity.
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>Guardrails — What to Add and What to Skip</h3>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>Guardrail</th><th>Add it?</th><th>Rationale</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ResourceQuota per namespace</td>
+          <td><span class="tag tag-green">yes</span></td>
+          <td>Prevents one misbehaving service from consuming all cluster resources. Set generously enough not to block normal operations.</td>
+        </tr>
+        <tr>
+          <td>LimitRange (default requests)</td>
+          <td><span class="tag tag-green">yes</span></td>
+          <td>Ensures any pod that somehow bypasses the Helm chart still gets scheduled with a request. Safety net only.</td>
+        </tr>
+        <tr>
+          <td>Network policies (default deny)</td>
+          <td><span class="tag tag-green">yes</span></td>
+          <td>Default deny-all with explicit allow for intra-namespace and ingress controller. Workers that need to reach Redis or Pub/Sub get explicit egress rules.</td>
+        </tr>
+        <tr>
+          <td>Non-root containers</td>
+          <td><span class="tag tag-green">yes</span></td>
+          <td>Enforced via OPA/Gatekeeper policy. Low-friction for NestJS — just set <code>USER node</code> in the Dockerfile.</td>
+        </tr>
+        <tr>
+          <td>Read-only root filesystem</td>
+          <td><span class="tag tag-orange">selective</span></td>
+          <td>Good for stateless services but NestJS sometimes writes temp files. Apply where easy; don't break services over it.</td>
+        </tr>
+        <tr>
+          <td>Pod Security Standards (restricted)</td>
+          <td><span class="tag tag-orange">warn mode</span></td>
+          <td>Start in warn mode, fix violations, then enforce. Don't enforce before auditing — it will break services silently at deploy time.</td>
+        </tr>
+        <tr>
+          <td>OPA/Gatekeeper for image registry</td>
+          <td><span class="tag tag-green">yes</span></td>
+          <td>Only images from the internal Artifact Registry are allowed. Prevents accidental use of public images in prod.</td>
+        </tr>
+        <tr>
+          <td>Admission webhook for resource limits</td>
+          <td><span class="tag tag-red">no</span></td>
+          <td>Requiring CPU limits creates throttling bugs. The Helm chart defaults are the right lever. A webhook that blocks deployment without a CPU limit will cause incidents.</td>
+        </tr>
+        <tr>
+          <td>mTLS between services (Istio/Linkerd)</td>
+          <td><span class="tag tag-red">skip now</span></td>
+          <td>Service mesh adds significant operational complexity. For a marketplace running inside a private GKE cluster with NetworkPolicies, the security uplift doesn't justify the overhead for the team size.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SECTION 3: DEPLOYMENT STRATEGIES -->
+<!-- ================================================================ -->
+<div class="section" id="deployment">
+  <div class="section-header">
+    <span class="section-num">03</span>
+    <h2 class="section-title">Deployment Strategies</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>Context &amp; Problem</h3>
+    <p>The three service categories have fundamentally different risk profiles. A broken worker that processes payments differently than expected is a different kind of problem from a broken frontend header component. Deploying all 15 services the same way is leaving risk on the table in one direction and adding unnecessary complexity in another.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Strategy by Service Category</h3>
+
+    <div class="diagram">
+      <svg viewBox="0 0 740 320" xmlns="http://www.w3.org/2000/svg" width="100%">
+        <defs>
+          <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#888880" stroke-width="1.5"/>
+          </marker>
+        </defs>
+
+        <!-- API services -->
+        <rect x="20" y="40" width="210" height="240" rx="6" class="d-box-blue" stroke-dasharray="none"/>
+        <text x="125" y="62" text-anchor="middle" class="d-label-bold">NestJS API (8 services)</text>
+        <text x="125" y="78" text-anchor="middle" class="d-label-sm">10–3000 RPS · REST + GraphQL</text>
+        <rect x="36" y="92" width="178" height="36" rx="3" class="d-box"/>
+        <text x="125" y="106" text-anchor="middle" class="d-label-bold">Rolling update</text>
+        <text x="125" y="120" text-anchor="middle" class="d-label-sm">default Kubernetes strategy</text>
+        <rect x="36" y="138" width="178" height="36" rx="3" class="d-box-orange"/>
+        <text x="125" y="152" text-anchor="middle" class="d-label-bold">+ Manual canary (high risk)</text>
+        <text x="125" y="166" text-anchor="middle" class="d-label-sm">weighted ingress, 5% → 50% → 100%</text>
+        <text x="125" y="200" text-anchor="middle" class="d-label-sm">maxSurge: 1</text>
+        <text x="125" y="216" text-anchor="middle" class="d-label-sm">maxUnavailable: 0</text>
+        <text x="125" y="232" text-anchor="middle" class="d-label-sm">minReadySeconds: 30</text>
+        <text x="125" y="248" text-anchor="middle" class="d-label-sm">readinessProbe required</text>
+
+        <!-- Frontend -->
+        <rect x="265" y="40" width="200" height="240" rx="6" class="d-box-green" stroke-dasharray="none"/>
+        <text x="365" y="62" text-anchor="middle" class="d-label-bold">Frontend (2 services)</text>
+        <text x="365" y="78" text-anchor="middle" class="d-label-sm">Next.js · low load</text>
+        <rect x="281" y="92" width="168" height="36" rx="3" class="d-box"/>
+        <text x="365" y="106" text-anchor="middle" class="d-label-bold">Blue/Green</text>
+        <text x="365" y="120" text-anchor="middle" class="d-label-sm">instant cutover via Service selector</text>
+        <text x="365" y="155" text-anchor="middle" class="d-label-sm">Low traffic → spare slot</text>
+        <text x="365" y="170" text-anchor="middle" class="d-label-sm">cost is negligible</text>
+        <text x="365" y="195" text-anchor="middle" class="d-label-sm">Instant rollback by</text>
+        <text x="365" y="210" text-anchor="middle" class="d-label-sm">flipping Service selector</text>
+        <text x="365" y="235" text-anchor="middle" class="d-label-sm">Good for visual regressions</text>
+
+        <!-- Workers -->
+        <rect x="500" y="40" width="220" height="240" rx="6" class="d-box-purple" stroke-dasharray="none"/>
+        <text x="610" y="62" text-anchor="middle" class="d-label-bold">Workers (5 services)</text>
+        <text x="610" y="78" text-anchor="middle" class="d-label-sm">Spikey · Pub/Sub · BullMQ</text>
+        <rect x="516" y="92" width="188" height="36" rx="3" class="d-box"/>
+        <text x="610" y="106" text-anchor="middle" class="d-label-bold">Rolling with drain</text>
+        <text x="610" y="120" text-anchor="middle" class="d-label-sm">graceful shutdown critical</text>
+        <text x="610" y="155" text-anchor="middle" class="d-label-sm">preStop hook: drain queue</text>
+        <text x="610" y="170" text-anchor="middle" class="d-label-sm">terminationGracePeriod: 120s</text>
+        <text x="610" y="195" text-anchor="middle" class="d-label-sm">SIGTERM → finish current job</text>
+        <text x="610" y="210" text-anchor="middle" class="d-label-sm">ack before exit</text>
+        <text x="610" y="235" text-anchor="middle" class="d-label-sm">Never kill mid-message</text>
+      </svg>
+      <div class="diagram-caption">Deployment strategy by service category. Each choice maps to the service's risk profile, not a preference for a particular pattern.</div>
+    </div>
+
+    <h4>NestJS APIs — Rolling update</h4>
+    <p>Rolling update with <code>maxUnavailable: 0</code> and <code>maxSurge: 1</code> means new pods must be healthy before old ones are terminated. <code>minReadySeconds: 30</code> adds a soak period before a pod is declared ready. This handles connection drain gracefully. For releases that carry risk (database schema changes, major dependency bumps), a manual canary step is added: deploy to a separate canary deployment, shift 5% of ingress traffic to it via weighted GKE Gateway routing, watch error rate and p99 latency for 30 minutes, then proceed to full rollout.</p>
+
+    <h4>Frontend — Blue/Green</h4>
+    <p>Frontend services run at low load, so the cost of maintaining a second idle slot is negligible. The benefit is instant rollback: a Kubernetes Service selector change flips traffic from blue to green in under a second. This matters for frontend deployments where visual regressions are hard to catch in CI and need to be reverted the moment they're seen in production.</p>
+
+    <h4>Workers — Rolling with graceful drain</h4>
+    <p>Workers processing Pub/Sub messages or BullMQ jobs must never be killed mid-job. The implementation uses a <code>preStop</code> lifecycle hook that pauses new message consumption and waits for in-flight jobs to complete, combined with a <code>terminationGracePeriodSeconds</code> long enough to cover the maximum job duration. This is usually 60–120 seconds for a marketplace worker. SIGTERM is the signal to drain, not to abort.</p>
+
+    <pre># Worker Deployment excerpt
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: payment-worker
+          lifecycle:
+            preStop:
+              exec:
+                command: ["node", "scripts/drain.js"]  # sets a DRAINING flag, waits for queue empty
+          env:
+            - name: GRACEFUL_SHUTDOWN_TIMEOUT_MS
+              value: "115000"</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Rollback for On-Call / Non-Authors</h3>
+    <p>Rollback must be possible by any on-call engineer, not just the person who made the change. The mechanism is always the same: revert the GitOps PR that bumped the image tag, and open a new PR with the previous SHA. This is a git operation, not a kubectl command, and it creates an audit trail.</p>
+
+    <p>For immediate mitigation (faster than a PR review cycle), there is a runbook-documented escape hatch: <code>kubectl rollout undo deployment/&lt;name&gt;</code> in the relevant namespace. This reverts to the previous ReplicaSet and is fast, but it bypasses GitOps — the cluster state diverges from the repo. The on-call engineer then follows up with a GitOps PR within the same incident window to reconcile. This two-step approach balances speed with auditability.</p>
+
+    <div class="callout decision">
+      <div class="callout-label">Decision: Runbook over tooling</div>
+      Fancy rollback UIs (ArgoCD rollback button, custom Slack bots) are tempting but add complexity and failure modes. A written runbook with two clear paths — slow/clean via GitOps PR, fast/dirty via kubectl undo + follow-up PR — is more reliable and easier to execute under stress. On-call engineers should practice it in the non-prod environments quarterly.
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>Deployment Traceability</h3>
+    <p>Every running pod must be traceable back to a commit and PR. This is achieved through a combination of:</p>
+    <ul>
+      <li>Image tag = commit SHA, always. Any pod's <code>image</code> field is a direct link to the source commit.</li>
+      <li>Pod annotations set by the Helm chart: <code>deploy.marketplace/commit-sha</code>, <code>deploy.marketplace/deployed-by</code>, <code>deploy.marketplace/gitops-pr</code>.</li>
+      <li>FluxCD's <code>last-applied-revision</code> annotation on HelmRelease objects, which records the GitOps repo commit that applied the change.</li>
+      <li>Grafana dashboard showing deployment events (from FluxCD metrics) overlaid on error rate and latency graphs. When a latency spike appears, the engineer can see "deployment at 14:32" on the same chart.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SECTION 4: SECRET MANAGEMENT -->
+<!-- ================================================================ -->
+<div class="section" id="secrets">
+  <div class="section-header">
+    <span class="section-num">04</span>
+    <h2 class="section-title">Secret Management</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>Context &amp; Problem</h3>
+    <p>The wrong answer is storing secrets in the GitOps repository, even encrypted with SOPS or Sealed Secrets. It creates an asymmetric security model where the GitOps repo becomes a target, and rotation requires a PR. The right architecture separates secret storage (GCP Secret Manager) from secret delivery (External Secrets Operator) and treats the GitOps repo as containing only references to secrets, never the secrets themselves.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Where Secrets Live</h3>
+    <p>All secrets are stored in <strong>GCP Secret Manager</strong>. Each secret is namespaced by environment and service: <code>marketplace-prod/order-service/db-password</code>. This gives fine-grained IAM control — each service's Workload Identity service account can only read its own secrets — and provides automatic versioning, access logging, and rotation triggers via Cloud Pub/Sub notifications.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 740 240" xmlns="http://www.w3.org/2000/svg" width="100%">
+        <defs>
+          <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#888880" stroke-width="1.5"/>
+          </marker>
+        </defs>
+
+        <!-- Secret Manager -->
+        <rect x="20" y="80" width="140" height="80" rx="4" class="d-box-blue"/>
+        <text x="90" y="108" text-anchor="middle" class="d-label-bold">GCP Secret</text>
+        <text x="90" y="122" text-anchor="middle" class="d-label-bold">Manager</text>
+        <text x="90" y="140" text-anchor="middle" class="d-label-sm">versioned · logged · IAM</text>
+
+        <!-- ESO -->
+        <rect x="220" y="80" width="150" height="80" rx="4" class="d-box-green"/>
+        <text x="295" y="108" text-anchor="middle" class="d-label-bold">External Secrets</text>
+        <text x="295" y="122" text-anchor="middle" class="d-label-bold">Operator</text>
+        <text x="295" y="140" text-anchor="middle" class="d-label-sm">syncs on schedule</text>
+
+        <!-- K8s Secret -->
+        <rect x="430" y="80" width="130" height="80" rx="4" class="d-box-orange"/>
+        <text x="495" y="108" text-anchor="middle" class="d-label-bold">K8s Secret</text>
+        <text x="495" y="122" text-anchor="middle" class="d-label-bold">(in-cluster)</text>
+        <text x="495" y="140" text-anchor="middle" class="d-label-sm">namespace-scoped · RBAC</text>
+
+        <!-- Pod -->
+        <rect x="620" y="80" width="100" height="80" rx="4" class="d-box"/>
+        <text x="670" y="112" text-anchor="middle" class="d-label-bold">Pod</text>
+        <text x="670" y="128" text-anchor="middle" class="d-label-sm">env vars</text>
+        <text x="670" y="144" text-anchor="middle" class="d-label-sm">mounted files</text>
+
+        <!-- Arrows -->
+        <line x1="160" y1="120" x2="218" y2="120" stroke="#888" stroke-width="1.2" marker-end="url(#arr3)"/>
+        <line x1="370" y1="120" x2="428" y2="120" stroke="#888" stroke-width="1.2" marker-end="url(#arr3)"/>
+        <line x1="560" y1="120" x2="618" y2="120" stroke="#888" stroke-width="1.2" marker-end="url(#arr3)"/>
+
+        <!-- Labels below arrows -->
+        <text x="189" y="112" text-anchor="middle" class="d-label-sm">reads via</text>
+        <text x="189" y="125" text-anchor="middle" class="d-label-sm">Workload ID</text>
+        <text x="399" y="112" text-anchor="middle" class="d-label-sm">creates</text>
+        <text x="589" y="112" text-anchor="middle" class="d-label-sm">mounts</text>
+
+        <!-- Workload Identity -->
+        <rect x="200" y="185" width="190" height="30" rx="3" class="d-box"/>
+        <text x="295" y="204" text-anchor="middle" class="d-label-sm">Workload Identity: GSA bound to KSA</text>
+
+        <line x1="295" y1="160" x2="295" y2="183" stroke="#aaa" stroke-width="1" stroke-dasharray="3 2"/>
+      </svg>
+      <div class="diagram-caption">Secret delivery flow. Secrets never touch the GitOps repo. ESO syncs from Secret Manager to in-cluster Kubernetes Secrets, which pods consume as env vars.</div>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>Injection into Workloads</h3>
+    <p><strong>External Secrets Operator (ESO)</strong> runs in the cluster and watches <code>ExternalSecret</code> custom resources. Each service declares what secrets it needs; ESO fetches them from Secret Manager and creates or updates the corresponding Kubernetes Secret. The sync interval is configurable — 1 minute for most secrets, shorter if the service supports hot reload.</p>
+
+    <pre>apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: order-service-secrets
+  namespace: marketplace-api
+spec:
+  refreshInterval: 1m
+  secretStoreRef:
+    name: gcp-secret-store
+    kind: ClusterSecretStore
+  target:
+    name: order-service-secrets
+  data:
+    - secretKey: DB_PASSWORD
+      remoteRef:
+        key: marketplace-prod/order-service/db-password
+        version: latest
+    - secretKey: JWT_SECRET
+      remoteRef:
+        key: marketplace-prod/order-service/jwt-secret
+        version: latest</pre>
+
+    <p>Pods then consume these as environment variables via <code>envFrom</code>. For secrets that need file-based delivery (TLS certs, service account keys), ESO can also write them as mounted files. The Helm chart template handles this so service teams never touch the ESO resource directly — they declare keys in <code>values.yaml</code> and the chart generates the ExternalSecret.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Rotation Without Downtime</h3>
+    <p>Secret rotation without downtime requires the application to support hot-reload or the infrastructure to perform a rolling restart. The approach depends on the secret type:</p>
+
+    <ul>
+      <li><strong>Database credentials:</strong> MongoDB Atlas supports dual-active credentials during rotation. Add the new credential, update Secret Manager, ESO syncs the Kubernetes Secret within the refresh interval, a rolling restart picks up the new value, then revoke the old credential. Total downtime: zero.</li>
+      <li><strong>API keys / JWT secrets:</strong> Services should read these from env vars, not cache at startup. If they do cache, a rolling restart is triggered automatically by an annotation change on the Deployment (the Helm chart can include a hash of the secret as an annotation, which changes when the secret rotates, triggering a rollout).</li>
+      <li><strong>Automatic rotation triggers:</strong> Secret Manager supports Pub/Sub notifications on secret versions. A Cloud Function (or Cloud Run job) subscribes to rotation events, updates the Kubernetes Secret directly via the ESO sync, and optionally triggers a rolling restart via the Kubernetes API if the service can't hot-reload.</li>
+    </ul>
+
+    <div class="callout skip">
+      <div class="callout-label">What I'd skip</div>
+      HashiCorp Vault is a common recommendation but adds a significant operational component — Vault clusters, HA configuration, unsealing. GCP Secret Manager provides equivalent functionality for a GCP-native stack with zero operational overhead. Vault makes sense if you have multi-cloud requirements or need its dynamic secret generation capabilities (short-lived database credentials). Neither applies here.
+    </div>
+
+    <p>SOPS + Age for encrypting secrets in the GitOps repo is also skipped. It solves the "don't commit plaintext" problem but creates new problems: secret values are still in git history, key management is manual, and rotation requires a PR. ESO + Secret Manager is cleaner end-to-end.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SECTION 5: DEVELOPER EXPERIENCE -->
+<!-- ================================================================ -->
+<div class="section" id="dx">
+  <div class="section-header">
+    <span class="section-num">05</span>
+    <h2 class="section-title">Developer Experience &amp; Platform Self-service</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>Context &amp; Problem</h3>
+    <p>The failure mode for platform teams is becoming a bottleneck. If engineers need to open a ticket to change a replica count, add an environment variable, or investigate a production log, the platform team spends its time on toil instead of leverage. The goal is to define a clear boundary: what service teams own, what the platform team owns, and what neither team should need to touch manually.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>What Service Teams Own — No Platform Involvement Needed</h3>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>Capability</th><th>Mechanism</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Scaling configuration</td>
+          <td>Edit <code>values.yaml</code> in GitOps repo, open PR</td>
+          <td>HPA min/max and target CPU are in the values file. Teams own these.</td>
+        </tr>
+        <tr>
+          <td>Environment variables (non-secret)</td>
+          <td>Edit <code>env</code> block in <code>values.yaml</code></td>
+          <td>Goes through PR for traceability. No platform team involvement.</td>
+        </tr>
+        <tr>
+          <td>Secret references</td>
+          <td>Add key to <code>envFromSecrets</code> in <code>values.yaml</code></td>
+          <td>Platform team pre-provisions the GSA permissions; team adds the reference.</td>
+        </tr>
+        <tr>
+          <td>Log queries</td>
+          <td>GCP Cloud Logging / Grafana Loki directly</td>
+          <td>Service teams have read access to their namespace's logs. No tickets needed.</td>
+        </tr>
+        <tr>
+          <td>Feature flags</td>
+          <td>Dedicated feature flag service (e.g. Unleash, or LaunchDarkly)</td>
+          <td>Entirely outside Kubernetes. Flags are changed by the owning team in the flag UI.</td>
+        </tr>
+        <tr>
+          <td>Triggering a rollback</td>
+          <td>Revert GitOps PR or <code>kubectl rollout undo</code> via runbook</td>
+          <td>All on-call engineers have the necessary RBAC permissions.</td>
+        </tr>
+        <tr>
+          <td>Viewing metrics / dashboards</td>
+          <td>Grafana (read access for all engineers)</td>
+          <td>Service-level dashboards are pre-provisioned by the platform team for the common cases.</td>
+        </tr>
+        <tr>
+          <td>Running one-off jobs</td>
+          <td>Kubernetes Job via <code>kubectl create job</code> or a CI workflow</td>
+          <td>Templated via the monorepo — engineers run <code>nx run order-service:migration</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="subsection">
+    <h3>What the Platform Team Owns</h3>
+    <ul>
+      <li>Cluster provisioning and upgrades (Terraform + GKE channel management)</li>
+      <li>The shared Helm chart and its defaults</li>
+      <li>Namespace creation and IAM/RBAC setup for new services</li>
+      <li>Network policies and admission policies</li>
+      <li>The observability stack (Prometheus, Grafana, alerting rules)</li>
+      <li>Secret Manager structure and GSA permission templates</li>
+      <li>KEDA and ESO operator upgrades</li>
+      <li>The CI reusable workflow</li>
+    </ul>
+
+    <div class="callout note">
+      <div class="callout-label">Boundary principle</div>
+      The platform team owns the <em>rules of the game</em>, not the moves. If a service team needs the platform team to change a replica count or add an env var, that's a platform failure, not a normal workflow. The test: can a new service be deployed entirely without a Slack message to the platform team? If not, fix the self-service gap.
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>The One Thing to Build First</h3>
+    <p>The highest-leverage single investment is a <strong>service scaffolding CLI</strong> integrated into the Nx monorepo. When a team creates a new service, they run one command and get a fully-wired project: Dockerfile, Helm values file with sensible defaults, CI caller workflow, ExternalSecret template, and a basic <code>/health</code> endpoint. The generated service is ready to deploy to dev without the team ever reading a Kubernetes manifest.</p>
+
+    <pre># What a team runs to add a new service
+npx nx generate @marketplace/service-generator:service \
+  --name=inventory-service \
+  --type=api \
+  --port=3001</pre>
+
+    <p>This generator outputs:</p>
+    <ul>
+      <li><code>apps/inventory-service/</code> — NestJS scaffold with health endpoint</li>
+      <li><code>apps/inventory-service/Dockerfile</code></li>
+      <li><code>.github/workflows/inventory-service.yml</code> — calls the reusable CI workflow</li>
+      <li><code>gitops/envs/dev/apps/inventory-service/values.yaml</code> — pre-filled with name, port, and type</li>
+      <li>A PR description template explaining what to change before going to prod</li>
+    </ul>
+
+    <p>The reason this comes first: it multiplies every other platform investment. Good defaults in the generator mean every new service inherits the resource configuration, security context, and health check setup automatically. Bad defaults proliferate just as quickly, so getting this right early pays compound dividends.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SECTION 6: OBSERVABILITY -->
+<!-- ================================================================ -->
+<div class="section" id="observability">
+  <div class="section-header">
+    <span class="section-num">06</span>
+    <h2 class="section-title">Observability &amp; Incident Readiness</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>Context &amp; Problem</h3>
+    <p>Prometheus and Grafana are already in the stack, which is a good starting point. The problem at scale is alert fatigue: as services multiply, so do dashboards and alerts, until on-call is a wall of noise that nobody takes seriously. The design goal is to keep alerts <em>actionable</em> regardless of service count, and to make debugging fast enough that a small on-call team doesn't burn out.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>What to Monitor and Alert On</h3>
+
+    <p>Every service gets the same base set of metrics via the shared Helm chart (Prometheus annotations + a standard NestJS metrics middleware). Alerts are derived from service-level objectives, not from infrastructure metrics. Infrastructure metrics (CPU, memory) are in dashboards for debugging but not in alert routing.</p>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>Signal</th><th>Alert threshold</th><th>Routing</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Error rate (5xx / total requests)</td>
+          <td>&gt;1% over 5 min</td>
+          <td>PagerDuty — high priority</td>
+        </tr>
+        <tr>
+          <td>p99 latency</td>
+          <td>&gt;1s over 5 min (APIs), &gt;30s (workers)</td>
+          <td>PagerDuty — medium priority</td>
+        </tr>
+        <tr>
+          <td>Pub/Sub subscription backlog</td>
+          <td>&gt;10,000 undelivered messages for 10 min</td>
+          <td>PagerDuty — high priority</td>
+        </tr>
+        <tr>
+          <td>Pod crash loops</td>
+          <td>CrashLoopBackOff for 5 min</td>
+          <td>PagerDuty — high priority</td>
+        </tr>
+        <tr>
+          <td>HPA at max replicas</td>
+          <td>Sustained for 10 min</td>
+          <td>Slack — ops channel (not pager)</td>
+        </tr>
+        <tr>
+          <td>Certificate expiry</td>
+          <td>&lt;14 days remaining</td>
+          <td>Slack — ops channel (not pager)</td>
+        </tr>
+        <tr>
+          <td>Failed deployments (FluxCD)</td>
+          <td>HelmRelease in Failed state</td>
+          <td>Slack — relevant team channel</td>
+        </tr>
+        <tr>
+          <td>MongoDB Atlas connection pool saturation</td>
+          <td>&gt;80% connections used</td>
+          <td>Slack — ops channel</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>The critical discipline is keeping the pager list short. Every new alert that goes to PagerDuty must have a clear action associated with it — if you can't write the runbook step, don't add the alert. Alerts for conditions that require investigation but not immediate action go to Slack or a low-priority channel.</p>
+
+    <p>As service count grows, alerts are grouped by service SLO tier, not by service name. A tier-1 service (payment processing, order placement) has tighter thresholds and wakes people up. A tier-3 service (recommendation engine) might degrade gracefully and alert to Slack. This keeps the pager manageable without ignoring real problems.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Debugging a Latency Spike — End to End</h3>
+
+    <div class="diagram">
+      <svg viewBox="0 0 740 340" xmlns="http://www.w3.org/2000/svg" width="100%">
+        <defs>
+          <marker id="arr4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#888880" stroke-width="1.5"/>
+          </marker>
+        </defs>
+
+        <rect x="20" y="20" width="700" height="300" rx="6" fill="#fafaf8" stroke="#d4d2c9" stroke-width="1"/>
+
+        <!-- Step boxes -->
+        <rect x="40" y="50" width="150" height="60" rx="4" class="d-box-blue"/>
+        <text x="115" y="74" text-anchor="middle" class="d-label-bold">1. Alert fires</text>
+        <text x="115" y="90" text-anchor="middle" class="d-label-sm">p99 &gt; 1s on /api/orders</text>
+        <text x="115" y="104" text-anchor="middle" class="d-label-sm">PagerDuty → on-call</text>
+
+        <rect x="240" y="50" width="150" height="60" rx="4" class="d-box-orange"/>
+        <text x="315" y="74" text-anchor="middle" class="d-label-bold">2. Grafana overview</text>
+        <text x="315" y="90" text-anchor="middle" class="d-label-sm">Check deployment events</text>
+        <text x="315" y="104" text-anchor="middle" class="d-label-sm">overlay on latency graph</text>
+
+        <rect x="440" y="50" width="150" height="60" rx="4" class="d-box-orange"/>
+        <text x="515" y="74" text-anchor="middle" class="d-label-bold">3. Service map</text>
+        <text x="515" y="90" text-anchor="middle" class="d-label-sm">Which dependency</text>
+        <text x="515" y="104" text-anchor="middle" class="d-label-sm">is contributing latency?</text>
+
+        <rect x="40" y="160" width="150" height="60" rx="4" class="d-box-green"/>
+        <text x="115" y="184" text-anchor="middle" class="d-label-bold">4. Traces</text>
+        <text x="115" y="200" text-anchor="middle" class="d-label-sm">Cloud Trace / Tempo</text>
+        <text x="115" y="214" text-anchor="middle" class="d-label-sm">find slow spans</text>
+
+        <rect x="240" y="160" width="150" height="60" rx="4" class="d-box-green"/>
+        <text x="315" y="184" text-anchor="middle" class="d-label-bold">5. Logs</text>
+        <text x="315" y="200" text-anchor="middle" class="d-label-sm">correlate by trace ID</text>
+        <text x="315" y="214" text-anchor="middle" class="d-label-sm">error context visible</text>
+
+        <rect x="440" y="160" width="150" height="60" rx="4" class="d-box-blue"/>
+        <text x="515" y="184" text-anchor="middle" class="d-label-bold">6. Resolution</text>
+        <text x="515" y="200" text-anchor="middle" class="d-label-sm">rollback / scale / fix</text>
+        <text x="515" y="214" text-anchor="middle" class="d-label-sm">confirm SLO recovered</text>
+
+        <!-- Arrows row 1 -->
+        <line x1="190" y1="80" x2="238" y2="80" stroke="#888" stroke-width="1.2" marker-end="url(#arr4)"/>
+        <line x1="390" y1="80" x2="438" y2="80" stroke="#888" stroke-width="1.2" marker-end="url(#arr4)"/>
+
+        <!-- Arrows row 1 to row 2 -->
+        <line x1="590" y1="110" x2="590" y2="145" stroke="#888" stroke-width="1.2"/>
+        <line x1="590" y1="145" x2="192" y2="145" stroke="#888" stroke-width="1.2"/>
+        <line x1="192" y1="145" x2="115" y2="158" stroke="#888" stroke-width="1.2" marker-end="url(#arr4)"/>
+
+        <!-- Arrows row 2 -->
+        <line x1="190" y1="190" x2="238" y2="190" stroke="#888" stroke-width="1.2" marker-end="url(#arr4)"/>
+        <line x1="390" y1="190" x2="438" y2="190" stroke="#888" stroke-width="1.2" marker-end="url(#arr4)"/>
+
+        <!-- Tools label -->
+        <text x="115" y="290" text-anchor="middle" class="d-label-sm" style="font-style:italic">Grafana</text>
+        <text x="315" y="290" text-anchor="middle" class="d-label-sm" style="font-style:italic">Grafana + deployment markers</text>
+        <text x="515" y="290" text-anchor="middle" class="d-label-sm" style="font-style:italic">Cloud Trace + Loki</text>
+      </svg>
+      <div class="diagram-caption">Latency spike debugging workflow. Each step uses a specific tool; the trace ID is the thread connecting them.</div>
+    </div>
+
+    <p>The key enabler is distributed tracing. NestJS services instrument with OpenTelemetry, traces go to GCP Cloud Trace (or Grafana Tempo if you prefer OSS). Every log line includes the trace ID from the incoming request. When Grafana shows a latency spike on service A, the engineer opens Cloud Trace, filters by high-latency traces on service A, picks one, and follows the span waterfall to find the slow dependency — usually a database query, a downstream service, or a Redis miss. The log correlation by trace ID then shows the actual error message or slow query.</p>
+
+    <p>The Grafana deployment marker overlay is the second-most important tool. It shows a vertical line on every metric chart when a deployment event occurs. If the latency spike started at 14:32 and there's a deployment marker at 14:31, the root cause is identified in seconds rather than minutes of bisection.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Sustainable On-Call for a Small Team</h3>
+    <ul>
+      <li><strong>Alert ownership:</strong> every alert is owned by a specific team, not "the platform team." If an alert fires with no clear owner, it gets reviewed in the weekly ops meeting and either assigned or deleted.</li>
+      <li><strong>Runbooks next to alerts:</strong> every PagerDuty alert has a runbook link in its body. Not a wiki page — a short document with: what this alert means, the first three things to check, how to mitigate, and who to escalate to. Engineers update runbooks after incidents.</li>
+      <li><strong>Post-mortems, not blame:</strong> blameless post-mortems with action items filed as tickets. The goal is making the next on-call shift easier, not reviewing what went wrong.</li>
+      <li><strong>Noise reviews:</strong> monthly review of alert volume. Any alert that fires more than once without resulting in an action gets its threshold adjusted or removed.</li>
+      <li><strong>Alert inhibition:</strong> if the cluster is in a maintenance window or a known degraded state, alerts are suppressed at the Alertmanager level rather than waking people up for known issues.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- SECTION 7: EPHEMERAL ENVIRONMENTS -->
+<!-- ================================================================ -->
+<div class="section" id="ephemeral">
+  <div class="section-header">
+    <span class="section-num">07</span>
+    <h2 class="section-title">On-Demand / Ephemeral Environments</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>Context &amp; Problem</h3>
+    <p>Ephemeral environments are genuinely useful for integration testing and stakeholder review of feature branches. They are also genuinely expensive and complex if over-engineered. The design needs to answer four questions: how are they created, how are they torn down, what data do they have access to, and how much do they cost at the scale of this fleet.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Proposed Design</h3>
+
+    <div class="diagram">
+      <svg viewBox="0 0 740 280" xmlns="http://www.w3.org/2000/svg" width="100%">
+        <defs>
+          <marker id="arr5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#888880" stroke-width="1.5"/>
+          </marker>
+        </defs>
+
+        <!-- PR opened -->
+        <rect x="20" y="100" width="110" height="60" rx="4" class="d-box"/>
+        <text x="75" y="124" text-anchor="middle" class="d-label-bold">PR opened</text>
+        <text x="75" y="140" text-anchor="middle" class="d-label-sm">on feature branch</text>
+        <text x="75" y="156" text-anchor="middle" class="d-label-sm">label: preview</text>
+
+        <!-- CI -->
+        <rect x="175" y="85" width="110" height="90" rx="4" class="d-box-blue"/>
+        <text x="230" y="110" text-anchor="middle" class="d-label-bold">CI</text>
+        <text x="230" y="126" text-anchor="middle" class="d-label-sm">build changed</text>
+        <text x="230" y="142" text-anchor="middle" class="d-label-sm">services only</text>
+        <text x="230" y="158" text-anchor="middle" class="d-label-sm">(Nx affected)</text>
+        <text x="230" y="170" text-anchor="middle" class="d-label-sm">tag :pr-123-sha</text>
+
+        <!-- Namespace provisioner -->
+        <rect x="335" y="85" width="130" height="90" rx="4" class="d-box-green"/>
+        <text x="400" y="110" text-anchor="middle" class="d-label-bold">Namespace</text>
+        <text x="400" y="126" text-anchor="middle" class="d-label-bold">provisioner job</text>
+        <text x="400" y="142" text-anchor="middle" class="d-label-sm">creates ns: pr-123</text>
+        <text x="400" y="158" text-anchor="middle" class="d-label-sm">deploys base stack</text>
+        <text x="400" y="170" text-anchor="middle" class="d-label-sm">+ changed services</text>
+
+        <!-- Environment -->
+        <rect x="515" y="70" width="130" height="120" rx="4" class="d-box-purple"/>
+        <text x="580" y="96" text-anchor="middle" class="d-label-bold">pr-123 namespace</text>
+        <text x="580" y="114" text-anchor="middle" class="d-label-sm">full stack or</text>
+        <text x="580" y="130" text-anchor="middle" class="d-label-sm">changed services</text>
+        <text x="580" y="148" text-anchor="middle" class="d-label-sm">+ shared infra</text>
+        <text x="580" y="166" text-anchor="middle" class="d-label-sm">preview.pr-123.env</text>
+        <text x="580" y="180" text-anchor="middle" class="d-label-sm">TTL: 72h</text>
+
+        <!-- Arrows -->
+        <line x1="130" y1="130" x2="173" y2="130" stroke="#888" stroke-width="1.2" marker-end="url(#arr5)"/>
+        <line x1="285" y1="130" x2="333" y2="130" stroke="#888" stroke-width="1.2" marker-end="url(#arr5)"/>
+        <line x1="465" y1="130" x2="513" y2="130" stroke="#888" stroke-width="1.2" marker-end="url(#arr5)"/>
+
+        <!-- PR closed -->
+        <rect x="335" y="215" width="130" height="40" rx="4" class="d-box-red"/>
+        <text x="400" y="234" text-anchor="middle" class="d-label-bold">PR merged/closed</text>
+        <text x="400" y="248" text-anchor="middle" class="d-label-sm">→ namespace deleted</text>
+
+        <line x1="580" y1="190" x2="580" y2="235" stroke="#888" stroke-width="1.2"/>
+        <line x1="580" y1="235" x2="467" y2="235" stroke="#888" stroke-width="1.2" marker-end="url(#arr5)"/>
+      </svg>
+      <div class="diagram-caption">Ephemeral environment lifecycle. Environments are namespaces in the int cluster, not full clusters. TTL ensures teardown even if the PR is forgotten.</div>
+    </div>
+
+    <p>Ephemeral environments are <strong>namespaces within the existing <code>int</code> cluster</strong>, not new clusters. Creating a new GKE cluster per PR is expensive (10–15 minutes to provision, idle cluster overhead) and unnecessary. Namespace isolation within an existing cluster is sufficient for the isolation requirements of a feature preview environment.</p>
+
+    <h4>Creation flow</h4>
+    <p>A Github Actions workflow triggers on PRs labeled <code>preview</code>. It uses Nx's <code>affected</code> command to identify which services changed on the branch. It builds and tags images for only those services (<code>:pr-123-sha</code>). A provisioner job then creates namespace <code>pr-123</code> in the int cluster, deploys the base stack of unmodified services (pulled from the current dev image tags), and overlays the changed services with their PR-specific images.</p>
+
+    <h4>Cost management</h4>
+    <p>The key cost lever is deploying only changed services, not the full 15-service stack. For a typical feature branch touching 2–3 services, the ephemeral environment adds 6–8 pods. Unmodified services are shared from the dev namespace via a service proxy or Kubernetes ExternalName service pointing at the dev deployments. This keeps the per-PR cost to roughly 30–50% of a full environment rather than 100%.</p>
+
+    <p>A TTL of 72 hours is enforced by a CronJob that scans for namespaces with a <code>preview.marketplace/expires-at</code> annotation older than now and deletes them. This catches forgotten environments from stale PRs.</p>
+
+    <h4>Data seeding</h4>
+    <p>Ephemeral environments connect to a shared, read-only <strong>anonymized snapshot</strong> of the dev MongoDB Atlas cluster, not to a per-environment database. Creating a fresh database per environment is slow (2–5 minutes for data seeding) and expensive. The snapshot is refreshed weekly and contains realistic but fake data generated by a seeding script. Services that need to write during testing get a transient in-memory MongoDB instance (via the mongodb operator or a StatefulSet) seeded from the snapshot on startup.</p>
+
+    <div class="callout tradeoff">
+      <div class="callout-label">Trade-off: Shared infra vs full isolation</div>
+      Full isolation (one Redis, one MongoDB, one Pub/Sub project per environment) gives the cleanest test surface but adds 5–8 minutes to environment creation and significant cost. For most feature branches, sharing stateless infra (Redis, Pub/Sub topics in dev, read-only MongoDB) is fine. The risk is test pollution from concurrent PR environments writing to the same dev topics. Mitigation: workers in ephemeral environments use a PR-specific Pub/Sub subscription prefix (<code>pr-123-</code>) to avoid reading from the same subscription as other environments.
+    </div>
+
+    <h4>Teardown</h4>
+    <p>Teardown is triggered by three events: PR merged, PR closed, or TTL expiry. The teardown job deletes the namespace, which cascades to all resources within it. Images with the PR tag are not deleted immediately — they sit in Artifact Registry for 30 days before the retention policy removes them. This allows post-merge debugging if an issue appears in int that didn't appear in the PR environment.</p>
+
+    <div class="callout skip">
+      <div class="callout-label">What I'd skip</div>
+      vCluster (virtual clusters within a real cluster) is popular for ephemeral environments because it provides more isolation than namespaces. The operational complexity is not justified here — namespace-level isolation with RBAC and NetworkPolicies is sufficient for a preview environment used by developers on the same team. vCluster makes sense for multi-tenant platforms where untrusted workloads share a cluster.
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div style="margin-top:80px;padding-top:32px;border-top:2px solid var(--ink);font-family:var(--sans);font-size:13px;color:var(--ink3);display:flex;justify-content:space-between;align-items:center;">
+  <span>Marketplace Platform Engineering Design</span>
+  <span>GKE · GCP · Github Actions · FluxCD</span>
+</div>
+
+</body>
+</html>

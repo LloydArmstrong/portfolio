@@ -2,8 +2,8 @@ import React from 'react';
 import { Link, graphql } from 'gatsby';
 import kebabCase from 'lodash/kebabCase';
 import PropTypes from 'prop-types';
-import { Helmet } from 'react-helmet';
 import styled from 'styled-components';
+import Seo from '@components/head';
 import { Layout } from '@components';
 
 const StyledTagsContainer = styled.main`
@@ -51,8 +51,6 @@ const TagTemplate = ({ pageContext, data, location }) => {
 
   return (
     <Layout location={location}>
-      <Helmet title={`Tagged: #${tag}`} />
-
       <StyledTagsContainer>
         <span className="breadcrumb">
           <span className="arrow">&larr;</span>
@@ -102,6 +100,15 @@ const TagTemplate = ({ pageContext, data, location }) => {
 
 export default TagTemplate;
 
+export const Head = ({ pageContext, location }) => (
+  <Seo title={`Tagged: #${pageContext.tag}`} pathname={location.pathname} />
+);
+
+Head.propTypes = {
+  pageContext: PropTypes.object.isRequired,
+  location: PropTypes.object.isRequired,
+};
+
 TagTemplate.propTypes = {
   pageContext: PropTypes.shape({
     tag: PropTypes.string.isRequired,
@@ -124,10 +131,10 @@ TagTemplate.propTypes = {
 };
 
 export const pageQuery = graphql`
-  query($tag: String!) {
+  query ($tag: String!) {
     allMarkdownRemark(
       limit: 2000
-      sort: { fields: [frontmatter___date], order: DESC }
+      sort: { frontmatter: { date: DESC } }
       filter: { frontmatter: { tags: { in: [$tag] } } }
     ) {
       totalCount
