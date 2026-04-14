@@ -332,11 +332,11 @@
 <div class="cover">
   <div class="cover-label">Platform Engineering Design Document</div>
   <h1>Marketplace Platform<br><em>Architecture & Operational Design</em></h1>
+    <h3 class="section-title">Lloyd Armstrong</h3>
   <div class="cover-meta">
     <span><span class="dot"></span>15 microservices · GKE · GCP</span>
     <span><span class="dot"></span>4 environments: dev / int / qa / prod</span>
     <span><span class="dot"></span>Monorepo (Nx) · FluxCD · Terraform</span>
-    <span><span class="dot"></span>Sections: CI/CD, K8s, Deployment, Secrets, DX, Observability, Ephemeral Envs</span>
   </div>
 </div>
 
@@ -366,7 +366,7 @@
   <!-- Context -->
   <div class="subsection">
     <h3>Context &amp; Problem</h3>
-    <p>With 15 services in a single Nx monorepo spread across four environments, the naive approach is one workflow file per service. That produces 15 files that are mostly identical, diverge gradually, and become impossible to audit. The real problem is dual: 
+    <p>With 15 services in a single Nx monorepo spread across four environments, the naive approach is one workflow file per service. That produces 15 files that are mostly identical, diverge gradually, and become impossible to audit. There are two real problems to solve:</p> 
       <ul>
         <li>Avoiding unnecessary builds when a change doesn't touch a given service</li>
         <li>Ensuring every service that <em>does</em> change goes through the same quality gates before reaching production</li>
@@ -414,20 +414,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        # npm ci against the monorepo root package.json
-
+        ...
       - name: Lint
-        # npx nx lint ${{ inputs.service_name }}
-
+        ...
       - name: Test
-        # npx nx test ${{ inputs.service_name }} --coverage
-
+        ...
       - name: Build
-        # npx nx build ${{ inputs.service_name }} --configuration=production
-
+        ...
       - name: Authenticate to Artifact Registry
         ...
-
       - name: Build and push container image
         ...
         # No :latest tag — SHA is the only reference used downstream
@@ -553,7 +548,7 @@ jobs:
       <div class="diagram-caption">Image promotion flow. The SHA tag is immutable. Promotion is a GitOps PR that bumps the tag in the target environment's values.yaml.</div>
     </div>
 
-    <p>Images are tagged with the commit SHA only — no <code>:latest</code>, no semver at this layer. The SHA is the single source of truth connecting a running container back to a commit. Semver tags are optional additions for human-readability but never used as the deployment reference. Every image is built once and promoted, never rebuilt per environment.</p>
+    <p>Images are tagged with the commit SHA only. No <code>:latest</code>, no semver at this layer. The SHA is the single source of truth connecting a running container back to a commit. Semver tags are optional additions for human-readability but never used as the deployment reference. Every image is built once and promoted, never rebuilt per environment.</p>
 
     <p>Promotion works by opening a pull request in the GitOps repo that bumps the image tag in the target environment's <code>values.yaml</code>. For dev, CI does this automatically on merge. For int and above, it requires a PR and at least one human approval. For prod, the approval gate is enforced by Github's <em>required reviewers</em> on the environment protection rules.</p>
     </div>
@@ -604,7 +599,7 @@ jobs:
   <div class="subsection">
     <h3>Resource Requests, Limits, and Autoscaling</h3>
 
-    <p>Resource requests are mandatory — Kubernetes can't schedule pods or make autoscaling decisions without them. Limits are more nuanced. CPU limits cause throttling even when the node has spare capacity, which is counterintuitive and leads to latency spikes. The approach here is different for CPU and memory (example values):</p>
+    <p>Resource requests are mandatory. Kubernetes can't schedule pods or make autoscaling decisions without them. Limits are more nuanced. CPU limits cause throttling even when the node has spare capacity, which is counterintuitive and leads to latency spikes. The approach here is different for CPU and memory (example values):</p>
 
     <table class="data-table">
       <thead>
@@ -649,11 +644,6 @@ jobs:
 
     <p>For workers, KEDA replaces the standard HPA. Workers are driven by Pub/Sub queue depth, not CPU. A worker that has 10,000 messages in its subscription needs more replicas regardless of what the CPU metric says. The other HDA values are illustrative and need to match what the team observes and is trying to achieve in production.</p>
 
-
-    <div class="callout note">
-      <div class="callout-label">Note on Autopilot + KEDA</div>
-      GKE Autopilot supports KEDA via the GKE Add-on. Nodes are provisioned as pods are scheduled, so the scale-from-zero behaviour works correctly. Autopilot provisions a node when KEDA spins up a new pod. Scale-to-zero is also supported, which eliminates idle worker costs during quiet periods.
-    </div>
   </div>
 
   <div class="subsection">
@@ -813,20 +803,6 @@ resources:
     <h4>Workers — Rolling with graceful drain</h4>
     <p>Workers processing Pub/Sub messages or BullMQ jobs must never be killed mid-job. The implementation uses a <code>preStop</code> lifecycle hook that pauses new message consumption and waits for in-flight jobs to complete, combined with a <code>terminationGracePeriodSeconds</code> long enough to cover the maximum job duration. This is usually 60–120 seconds for a marketplace worker. SIGTERM is the signal to drain, not to abort.</p>
 
-    <pre># Worker Deployment excerpt
-spec:
-  template:
-    spec:
-      terminationGracePeriodSeconds: 120
-      containers:
-        - name: payment-worker
-          lifecycle:
-            preStop:
-              exec:
-                command: ["node", "scripts/drain.js"]  # sets a DRAINING flag, waits for queue empty
-          env:
-            - name: GRACEFUL_SHUTDOWN_TIMEOUT_MS
-              value: "115000"</pre>
   </div>
 
   <div class="subsection">
@@ -837,18 +813,17 @@ spec:
 
     <div class="callout decision">
       <div class="callout-label">Decision: Runbook over tooling</div>
-      Fancy rollback UIs (ArgoCD rollback button, custom Slack bots) are tempting but add complexity and failure modes. A written runbook with two clear paths — slow/clean via GitOps PR, fast/dirty via kubectl undo + follow-up PR — is more reliable and easier to execute under stress. On-call engineers should practice it in the non-prod environments quarterly.
+      Like I mentioned before, I prefer keeping tooling lean. Fancy rollback UIs (ArgoCD rollback button, custom Slack bots) are tempting but add complexity and failure modes. A written runbook with two clear paths is more reliable and easier to execute under stress. On-call engineers should practice it in the non-prod environments quarterly.
     </div>
   </div>
 
   <div class="subsection">
     <h3>Deployment Traceability</h3>
-    <p>Every running pod must be traceable back to a commit and PR. This is achieved through a combination of:</p>
+    <p>This links back to the image tagging I already mentioned. Every running pod must be traceable back to a commit and PR. This is achieved through a combination of:</p>
     <ul>
       <li>Image tag = commit SHA, always. Any pod's <code>image</code> field is a direct link to the source commit.</li>
       <li>Pod annotations set by the Helm chart: <code>deploy.marketplace/commit-sha</code>, <code>deploy.marketplace/deployed-by</code>, <code>deploy.marketplace/gitops-pr</code>.</li>
       <li>FluxCD's <code>last-applied-revision</code> annotation on HelmRelease objects, which records the GitOps repo commit that applied the change.</li>
-      <li>Grafana dashboard showing deployment events (from FluxCD metrics) overlaid on error rate and latency graphs. When a latency spike appears, the engineer can see "deployment at 14:32" on the same chart.</li>
     </ul>
   </div>
 </div>
@@ -869,7 +844,11 @@ spec:
 
   <div class="subsection">
     <h3>Where Secrets Live</h3>
-    <p>All secrets are stored in <strong>GCP Secret Manager</strong>. Each secret is namespaced by environment and service: <code>marketplace-prod/order-service/db-password</code>. This gives fine-grained IAM control — each service's Workload Identity service account can only read its own secrets — and provides automatic versioning, access logging, and rotation triggers via Cloud Pub/Sub notifications.</p>
+    <p>All secrets are stored in <strong>GCP Secret Manager</strong>. Each secret is named by service: <code>order-service/db-password</code>. No need for environment-specific naming due to one GCP project per environment. This gives fine-grained IAM control. Each service's Workload Identity service account can only read its own secrets and provides automatic versioning, access logging, and rotation triggers via Cloud Pub/Sub notifications.</p>
+  </div>
+  
+  <div class="subsection">
+    <h3>Injection into Workloads</h3>
 
     <div class="diagram">
       <svg viewBox="0 0 740 240" xmlns="http://www.w3.org/2000/svg" width="100%">
@@ -922,35 +901,8 @@ spec:
       </svg>
       <div class="diagram-caption">Secret delivery flow. Secrets never touch the GitOps repo. ESO syncs from Secret Manager to in-cluster Kubernetes Secrets, which pods consume as env vars.</div>
     </div>
-  </div>
-
-  <div class="subsection">
-    <h3>Injection into Workloads</h3>
-    <p><strong>External Secrets Operator (ESO)</strong> runs in the cluster and watches <code>ExternalSecret</code> custom resources. Each service declares what secrets it needs; ESO fetches them from Secret Manager and creates or updates the corresponding Kubernetes Secret. The sync interval is configurable — 1 minute for most secrets, shorter if the service supports hot reload.</p>
-
-    <pre>apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: order-service-secrets
-  namespace: marketplace-api
-spec:
-  refreshInterval: 1m
-  secretStoreRef:
-    name: gcp-secret-store
-    kind: ClusterSecretStore
-  target:
-    name: order-service-secrets
-  data:
-    - secretKey: DB_PASSWORD
-      remoteRef:
-        key: marketplace-prod/order-service/db-password
-        version: latest
-    - secretKey: JWT_SECRET
-      remoteRef:
-        key: marketplace-prod/order-service/jwt-secret
-        version: latest</pre>
-
-    <p>Pods then consume these as environment variables via <code>envFrom</code>. For secrets that need file-based delivery (TLS certs, service account keys), ESO can also write them as mounted files. The Helm chart template handles this so service teams never touch the ESO resource directly — they declare keys in <code>values.yaml</code> and the chart generates the ExternalSecret.</p>
+    <p><strong>External Secrets Operator (ESO)</strong> runs in the cluster and watches <code>ExternalSecret</code> custom resources. Each service declares what secrets it needs. ESO fetches them from Secret Manager and creates or updates the corresponding Kubernetes Secret. The sync interval is configurable — 1 minute for most secrets, shorter if the service supports hot reload.</p>
+    <p>Pods then consume these as environment variables via <code>envFrom</code>. For secrets that need file-based delivery (TLS certs, service account keys), ESO can also write them as mounted files. The Helm chart template handles this so service teams never touch the ESO resource directly.<b> Teams declare keys in <code>values.yaml</code> and the chart generates the ExternalSecret.</b></p>
   </div>
 
   <div class="subsection">
@@ -958,17 +910,16 @@ spec:
     <p>Secret rotation without downtime requires the application to support hot-reload or the infrastructure to perform a rolling restart. The approach depends on the secret type:</p>
 
     <ul>
-      <li><strong>Database credentials:</strong> MongoDB Atlas supports dual-active credentials during rotation. Add the new credential, update Secret Manager, ESO syncs the Kubernetes Secret within the refresh interval, a rolling restart picks up the new value, then revoke the old credential. Total downtime: zero.</li>
+      <li><strong>Database credentials:</strong> MongoDB Atlas supports dual-active credentials during rotation. Add the new credential, update Secret Manager, ESO syncs the Kubernetes Secret within the refresh interval, a rolling restart picks up the new value, then revoke the old credential. <span class="tag tag-green">Zero Downtime</span></li>
       <li><strong>API keys / JWT secrets:</strong> Services should read these from env vars, not cache at startup. If they do cache, a rolling restart is triggered automatically by an annotation change on the Deployment (the Helm chart can include a hash of the secret as an annotation, which changes when the secret rotates, triggering a rollout).</li>
       <li><strong>Automatic rotation triggers:</strong> Secret Manager supports Pub/Sub notifications on secret versions. A Cloud Function (or Cloud Run job) subscribes to rotation events, updates the Kubernetes Secret directly via the ESO sync, and optionally triggers a rolling restart via the Kubernetes API if the service can't hot-reload.</li>
     </ul>
 
     <div class="callout skip">
       <div class="callout-label">What I'd skip</div>
-      HashiCorp Vault is a common recommendation but adds a significant operational component — Vault clusters, HA configuration, unsealing. GCP Secret Manager provides equivalent functionality for a GCP-native stack with zero operational overhead. Vault makes sense if you have multi-cloud requirements or need its dynamic secret generation capabilities (short-lived database credentials). Neither applies here.
+      I currently use HashiCorp Vault and it's a common recommendation, but adds a significant operational component. GCP Secret Manager provides equivalent functionality for a GCP-native stack with zero operational overhead. Vault makes sense if you have multi-cloud requirements or need its dynamic secret generation capabilities (short-lived database credentials). Neither applies here.
+      SOPS + Age for encrypting secrets in the GitOps repo is also skipped.
     </div>
-
-    <p>SOPS + Age for encrypting secrets in the GitOps repo is also skipped. It solves the "don't commit plaintext" problem but creates new problems: secret values are still in git history, key management is manual, and rotation requires a PR. ESO + Secret Manager is cleaner end-to-end.</p>
   </div>
 </div>
 
@@ -983,7 +934,7 @@ spec:
 
   <div class="subsection">
     <h3>Context &amp; Problem</h3>
-    <p>The failure mode for platform teams is becoming a bottleneck. If engineers need to open a ticket to change a replica count, add an environment variable, or investigate a production log, the platform team spends its time on toil instead of leverage. The goal is to define a clear boundary: what service teams own, what the platform team owns, and what neither team should need to touch manually.</p>
+    <p>Platform teams that own too much become a bottleneck for the engineers they're supposed to support. If engineers need to open a ticket to change a replica count, add an environment variable, or investigate a production log, <b> the platform team spends its time on meanial tasks instead of improving the product</b>. The goal is to define a clear boundary: what service teams own, what the platform team owns, and what neither team should need to touch manually.</p>
   </div>
 
   <div class="subsection">
@@ -997,7 +948,7 @@ spec:
         <tr>
           <td>Scaling configuration</td>
           <td>Edit <code>values.yaml</code> in GitOps repo, open PR</td>
-          <td>HPA min/max and target CPU are in the values file. Teams own these.</td>
+          <td>HPA min/max and target CPU are in the values file. Teams own these.*</td>
         </tr>
         <tr>
           <td>Environment variables (non-secret)</td>
@@ -1015,11 +966,6 @@ spec:
           <td>Service teams have read access to their namespace's logs. No tickets needed.</td>
         </tr>
         <tr>
-          <td>Feature flags</td>
-          <td>Dedicated feature flag service (e.g. Unleash, or LaunchDarkly)</td>
-          <td>Entirely outside Kubernetes. Flags are changed by the owning team in the flag UI.</td>
-        </tr>
-        <tr>
           <td>Triggering a rollback</td>
           <td>Revert GitOps PR or <code>kubectl rollout undo</code> via runbook</td>
           <td>All on-call engineers have the necessary RBAC permissions.</td>
@@ -1029,14 +975,13 @@ spec:
           <td>Grafana (read access for all engineers)</td>
           <td>Service-level dashboards are pre-provisioned by the platform team for the common cases.</td>
         </tr>
-        <tr>
-          <td>Running one-off jobs</td>
-          <td>Kubernetes Job via <code>kubectl create job</code> or a CI workflow</td>
-          <td>Templated via the monorepo — engineers run <code>nx run order-service:migration</code>.</td>
-        </tr>
       </tbody>
     </table>
   </div>
+    <div class="callout tradeoff">
+      <div class="callout-label">Feature Flags?</div>
+      I noticed Feature Flags were mentioned. Feature flags are part of the application logic, not the platform configuration. If the platform team owns the feature flag system, then service teams need to involve them for any new flag, which creates friction and delays. Instead, I prefer to provide a recommended open-source feature flag library (like Unleash or Flagsmith) that teams can integrate into their codebase independently. 
+    </div>
 
   <div class="subsection">
     <h3>What the Platform Team Owns</h3>
@@ -1044,7 +989,7 @@ spec:
       <li>Cluster provisioning and upgrades (Terraform + GKE channel management)</li>
       <li>The shared Helm chart and its defaults</li>
       <li>Namespace creation and IAM/RBAC setup for new services</li>
-      <li>Network policies and admission policies</li>
+      <li>Network policies, admission policies and *Resource quotas </li>
       <li>The observability stack (Prometheus, Grafana, alerting rules)</li>
       <li>Secret Manager structure and GSA permission templates</li>
       <li>KEDA and ESO operator upgrades</li>
@@ -1053,7 +998,7 @@ spec:
 
     <div class="callout note">
       <div class="callout-label">Boundary principle</div>
-      The platform team owns the <em>rules of the game</em>, not the moves. If a service team needs the platform team to change a replica count or add an env var, that's a platform failure, not a normal workflow. The test: can a new service be deployed entirely without a Slack message to the platform team? If not, fix the self-service gap.
+      If a service team needs the platform team to change a replica count or add an env var, that's a platform failure, not a normal workflow. The test: can a new service be deployed entirely without a Slack message to the platform team? If not, fix the self-service gap.
     </div>
   </div>
 
@@ -1067,7 +1012,7 @@ npx nx generate @marketplace/service-generator:service \
   --type=api \
   --port=3001</pre>
 
-    <p>This generator outputs:</p>
+    <p>This generator should output:</p>
     <ul>
       <li><code>apps/inventory-service/</code> — NestJS scaffold with health endpoint</li>
       <li><code>apps/inventory-service/Dockerfile</code></li>
