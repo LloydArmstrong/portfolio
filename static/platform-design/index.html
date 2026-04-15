@@ -332,11 +332,11 @@
 <div class="cover">
   <div class="cover-label">Platform Engineering Design Document</div>
   <h1>Marketplace Platform<br><em>Architecture & Operational Design</em></h1>
+    <h3 class="section-title">Lloyd Armstrong</h3>
   <div class="cover-meta">
     <span><span class="dot"></span>15 microservices · GKE · GCP</span>
     <span><span class="dot"></span>4 environments: dev / int / qa / prod</span>
     <span><span class="dot"></span>Monorepo (Nx) · FluxCD · Terraform</span>
-    <span><span class="dot"></span>Sections: CI/CD, K8s, Deployment, Secrets, DX, Observability, Ephemeral Envs</span>
   </div>
 </div>
 
@@ -366,7 +366,11 @@
   <!-- Context -->
   <div class="subsection">
     <h3>Context &amp; Problem</h3>
-    <p>With 15 services in a single Nx monorepo spread across four environments, the naive approach is one workflow file per service. That produces 15 files that are mostly identical, diverge gradually, and become impossible to audit. The real problem is dual: <em>avoiding unnecessary builds</em> when a change doesn't touch a given service, and <em>ensuring every service that does change goes through the same quality gates</em> before reaching production.</p>
+    <p>With 15 services in a single Nx monorepo spread across four environments, the naive approach is one workflow file per service. That produces 15 files that are mostly identical, diverge gradually, and become impossible to audit. There are two real problems to solve:</p> 
+      <ul>
+        <li>Avoiding unnecessary builds when a change doesn't touch a given service</li>
+        <li>Ensuring every service that <em>does</em> change goes through the same quality gates before reaching production</li>
+      </ul>
     <p>The secondary constraint is the GitOps boundary. CI owns building and tagging images; FluxCD owns deploying them. Those two concerns must stay cleanly separated or you end up with half-deployed states and no single source of truth.</p>
   </div>
 
@@ -375,9 +379,10 @@
     <h3>Proposed Solution — Pipeline Structure</h3>
 
     <h4>Shared reusable workflows</h4>
-    <p>Everything lives in a single monorepo. The Github Actions setup uses one <em>reusable workflow</em> (<code>.github/workflows/service-ci.yml</code>) that accepts the service name and type as inputs. Individual services have thin caller workflows that simply invoke the shared one. This means the logic for linting, testing, building, and pushing lives in one place.</p>
-
+    <p>Everything lives in a single monorepo. The Github Actions setup uses one <em>reusable workflow</em> (<code>.github/workflows/service-ci.yml</code>) which all live in a single file, however I will break it up into parts for ease of reading. </p>
+    First, we require the service name and type as inputs. 
     <pre># .github/workflows/service-ci.yml  (reusable, called by each service)
+
 on:
   workflow_call:
     inputs:
@@ -386,104 +391,60 @@ on:
         type: string
       service_type:
         required: true
-        type: string   # 'api' | 'frontend' | 'worker'
-    secrets:
-      inherit: true   # caller passes through GCP SA creds, etc.
-
+        type: string  # 'api' | 'worker' | 'frontend'
+</pre>
+Then, the workflow has two jobs: an <code>affected-check</code> job that computes whether the service is affected by the change, and a <code>ci</code> job that runs the actual CI steps but only if the service is affected. 
+<pre>
 jobs:
   affected-check:
-    runs-on: ubuntu-latest
     outputs:
-      affected: ${{ steps.nx.outputs.affected }}
+      affected: ${{ steps.check.outputs.affected }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: nrwl/nx-set-shas@v4
-      - id: nx
-        run: |
-          AFFECTED=$(npx nx show projects --affected --json | jq -r '.[] | select(. == "${{ inputs.service_name }}")')
-          echo "affected=$( [ -n '$AFFECTED' ] && echo 'true' || echo 'false' )" >> $GITHUB_OUTPUT
-
-  build-and-test:
+      - name: Checkout with full history
+        ...
+      - name: Compute Nx affected base/head SHAs
+        ...
+      - name: Check if service is affected
+        ...
+  ci:
     needs: affected-check
     if: needs.affected-check.outputs.affected == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
 
-      # Nx caching (remote cache via Nx Cloud or GCS bucket)
-      - run: npm ci
-
+      - name: Install dependencies
+        ...
       - name: Lint
-        run: npx nx lint ${{ inputs.service_name }}
-
+        ...
       - name: Test
-        run: npx nx test ${{ inputs.service_name }} --coverage
-
+        ...
       - name: Build
-        run: npx nx build ${{ inputs.service_name }} --configuration=production
+        ...
+      - name: Authenticate to Artifact Registry
+        ...
+      - name: Build and push container image
+        ...
+        # No :latest tag — SHA is the only reference used downstream
 
-      - name: Auth to GCR
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_JSON }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: apps/${{ inputs.service_name }}/Dockerfile
-          push: true
-          tags: |
-            europe-west1-docker.pkg.dev/my-project/marketplace/${{ inputs.service_name }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Update GitOps image tag (dev)
+      - name: Promote image tag to dev
         if: github.ref == 'refs/heads/main'
-        run: |
-          # Patch the HelmRelease values in the gitops repo
-          git clone https://x-access-token:${{ secrets.GITOPS_PAT }}@github.com/org/gitops.git
-          cd gitops
-          yq e ".image.tag = \"${{ github.sha }}\"" \
-            -i envs/dev/apps/${{ inputs.service_name }}/values.yaml
-          git config user.email "ci@marketplace.internal"
-          git config user.name "CI Bot"
-          git commit -am "chore: bump ${{ inputs.service_name }} to ${{ github.sha }} [dev]"
-          git push</pre>
-
-    <p>Each service has a three-line caller workflow:</p>
-
-    <pre># apps/order-service/.github/workflows/ci.yml
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  ci:
-    uses: ./.github/workflows/service-ci.yml
-    with:
-      service_name: order-service
-      service_type: api
-    secrets: inherit</pre>
+        # Clones the GitOps repo
+        # Updates envs/dev/apps/<service_name>/values.yaml image.tag to github.sha
+        # Opens a commit — FluxCD reconciles from there
+        # Int and above require a separate GitOps PR with human approval</pre>
 
     <div class="callout decision">
       <div class="callout-label">Decision</div>
-      Nx's <code>affected</code> command is the key mechanism for skipping unnecessary builds. It computes the dependency graph from <code>project.json</code> files and only runs tasks for projects touched by the diff. This means a change to the notification-worker doesn't trigger a build of the storefront. Remote caching (via Nx Cloud or a GCS bucket acting as a cache backend) means even affected builds are fast if the inputs haven't changed.
+      I have not worked much with Nx, however from a quick crash course, I was able to identify that Nx's <code>affected</code> command is the key mechanism for skipping unnecessary builds. It computes the dependency graph from <code>project.json</code> files and only runs tasks for projects touched by the diff. This means a change to the observability stack doesn't trigger a rebuild of the storefront.
+      You'll also notice that I've not used the input <code>service_type</code> in the workflow yet. This is intentional for the simplicity of my initial solution, but can be used later on for different build behaviour, test commands, health checks and deploy behaviour.
     </div>
   </div>
 
   <!-- GitOps Repo Structure -->
   <div class="subsection">
     <h3>GitOps Repo Structure</h3>
-    <p>The GitOps repository is entirely separate from the application monorepo. FluxCD watches it and reconciles state into the cluster. The directory structure follows environment-then-app, not app-then-environment, because promotion is an operation on an environment, not on an app.</p>
+    <p>The GitOps repository is entirely separate from the application monorepo. FluxCD watches it and reconciles state into the cluster. The directory structure follows environment THEN app, not app then environment, because promotion is an operation on an environment, not on an app.</p>
 
     <pre>gitops/
 ├── clusters/
@@ -587,15 +548,11 @@ jobs:
       <div class="diagram-caption">Image promotion flow. The SHA tag is immutable. Promotion is a GitOps PR that bumps the tag in the target environment's values.yaml.</div>
     </div>
 
-    <p>Images are tagged with the commit SHA only — no <code>:latest</code>, no semver at this layer. The SHA is the single source of truth connecting a running container back to a commit. Semver tags are optional additions for human-readability but never used as the deployment reference. Every image is built once and promoted, never rebuilt per environment.</p>
+    <p>Images are tagged with the commit SHA only. No <code>:latest</code>, no semver at this layer. The SHA is the single source of truth connecting a running container back to a commit. Semver tags are optional additions for human-readability but never used as the deployment reference. Every image is built once and promoted, never rebuilt per environment.</p>
 
-    <p>Promotion works by opening a pull request in the GitOps repo that bumps the image tag in the target environment's <code>values.yaml</code>. For dev, CI does this automatically on merge. For int and above, it requires a PR and at least one human approval. For prod, the approval gate is enforced by Github's <em>required reviewers</em> on the environment protection rules, not by convention.</p>
-
-    <div class="callout tradeoff">
-      <div class="callout-label">Trade-off</div>
-      An alternative is to use FluxCD's Image Automation Controller to watch the registry and bump tags automatically. This removes the GitOps PR step and is useful in high-velocity teams. The downside is that it reduces auditability and makes it harder to pause deployments during incidents. For a 15-service marketplace with a prod environment, the extra friction of a PR is worth it.
+    <p>Promotion works by opening a pull request in the GitOps repo that bumps the image tag in the target environment's <code>values.yaml</code>. For dev, CI does this automatically on merge. For int and above, it requires a PR and at least one human approval. For prod, the approval gate is enforced by Github's <em>required reviewers</em> on the environment protection rules.</p>
     </div>
-  </div>
+
 
   <!-- Gates -->
   <div class="subsection">
@@ -609,11 +566,6 @@ jobs:
       <li><strong>Post-deploy:</strong> FluxCD health checks (via <code>HealthChecks</code> on the <code>HelmRelease</code>) verify that the new pods reach <code>Running</code> state. If they don't within a timeout, Flux marks the release failed and Prometheus fires an alert. Rollback is a git revert of the tag bump PR.</li>
     </ul>
 
-    <div class="callout skip">
-      <div class="callout-label">What I'd skip</div>
-      Automated canary analysis tied to Flagger or Argo Rollouts is powerful but adds significant operational surface area. For most services here it's over-engineering. The exception is the high-RPS API services — those get manual canary promotion via weighted ingress, described in the deployment strategies section. Full automated Flagger rollouts with metric analysis can be added later when the team has the observability maturity to define meaningful promotion gates.
-    </div>
-  </div>
 </div>
 
 <!-- ================================================================ -->
@@ -626,18 +578,12 @@ jobs:
   </div>
 
   <div class="subsection">
-    <h3>Context &amp; Problem</h3>
-    <p>Most application engineers don't want to learn Kubernetes — they want to deploy their service and go home. The platform team's job is to make that possible without exposing raw Kubernetes API surface. The challenge is providing enough flexibility for the 15 services while keeping the cognitive overhead low enough that engineers don't route around the platform.</p>
-    <p>The secondary concern is blast radius. With 15 services in one cluster, a badly-configured deployment shouldn't be able to consume all cluster resources, reach production secrets in a staging namespace, or break other teams' services.</p>
-  </div>
-
-  <div class="subsection">
     <h3>Cluster Structure</h3>
-    <p>One GKE Autopilot cluster per environment is the right level of isolation for this size. Autopilot removes node management entirely — Google provisions nodes on demand based on pod resource requests, which eliminates the node sizing problem and removes the operational burden of managing node pools. This is a significant advantage for a small platform team.</p>
+    <p>One GKE Autopilot cluster per environment is the right level of isolation for this size. Autopilot removes node management entirely. Google provisions nodes on demand based on pod resource requests, which eliminates the node sizing problem and removes the operational burden of managing node pools. This is a significant advantage for a small platform team.</p>
 
     <div class="callout tradeoff">
       <div class="callout-label">Trade-off: Autopilot vs Standard</div>
-      Autopilot has constraints: no DaemonSets (so you lose node-level log agents — use the GKE-integrated logging instead), no privileged containers, limited node pool customization. For a marketplace running NestJS and React workloads, none of these are blockers. Standard mode makes sense if you need GPUs, custom node images, or workloads with unusual host requirements. It doesn't here.
+      Autopilot has constraints: no DaemonSets (so you lose node-level log agents, but you can use the GKE-integrated logging instead), no privileged containers, limited node pool customization. For a marketplace running NestJS and React workloads, none of these are blockers. Standard mode makes sense if you need GPUs, custom node images, or workloads with unusual host requirements. It doesn't here.
     </div>
 
     <p>Namespaces follow the pattern <code>&lt;team&gt;-&lt;component&gt;</code> rather than one namespace per service. This keeps RBAC manageable while still providing isolation boundaries.</p>
@@ -653,7 +599,7 @@ jobs:
   <div class="subsection">
     <h3>Resource Requests, Limits, and Autoscaling</h3>
 
-    <p>Resource requests are mandatory — Kubernetes can't schedule pods or make autoscaling decisions without them. Limits are more nuanced. CPU limits cause throttling even when the node has spare capacity, which is counterintuitive and leads to latency spikes. The approach here is different for CPU and memory:</p>
+    <p>Resource requests are mandatory. Kubernetes can't schedule pods or make autoscaling decisions without them. Limits are more nuanced. CPU limits cause throttling even when the node has spare capacity, which is counterintuitive and leads to latency spikes. The approach here is different for CPU and memory (example values):</p>
 
     <table class="data-table">
       <thead>
@@ -670,9 +616,9 @@ jobs:
         <tr>
           <td>NestJS API (10–3000 RPS)</td>
           <td>200m</td>
-          <td><em>none</em></td>
-          <td>256Mi</td>
+          <td><b>none</b></td>
           <td>512Mi</td>
+          <td>1Gi</td>
           <td>CPU 60%, min 2, max 20</td>
         </tr>
         <tr>
@@ -686,41 +632,18 @@ jobs:
         <tr>
           <td>NestJS worker (spikey)</td>
           <td>250m</td>
-          <td><em>none</em></td>
-          <td>256Mi</td>
-          <td>512Mi</td>
+          <td><b>none</b></td>
+          <td>1Gi</td>
+          <td>2Gi</td>
           <td>KEDA — Pub/Sub backlog</td>
         </tr>
       </tbody>
     </table>
 
-    <p>CPU limits are deliberately omitted for the API and worker services. The reasoning: Node.js is single-threaded by nature; CPU throttling at the container level creates latency spikes that look like application slowness. Memory limits are kept because unbounded memory growth is a real failure mode (memory leaks) and needs to cause an OOMKill rather than affecting other pods on the node.</p>
+    <p>CPU limits are deliberately omitted for the API and worker services. The reasoning is that CPU throttling at the container level creates latency spikes that look like application slowness. Memory limits are kept because unbounded memory growth is a real failure mode (memory leaks) and needs to cause an OOMKill rather than affecting other pods on the node.</p>
 
-    <p>For workers, KEDA replaces the standard HPA. Workers are driven by Pub/Sub queue depth, not CPU. A worker that has 10,000 messages in its subscription needs more replicas regardless of what the CPU metric says.</p>
+    <p>For workers, KEDA replaces the standard HPA. Workers are driven by Pub/Sub queue depth, not CPU. A worker that has 10,000 messages in its subscription needs more replicas regardless of what the CPU metric says. The other HDA values are illustrative and need to match what the team observes and is trying to achieve in production.</p>
 
-    <pre># KEDA ScaledObject for a worker service
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: notification-worker
-  namespace: marketplace-workers
-spec:
-  scaleTargetRef:
-    name: notification-worker
-  minReplicaCount: 1
-  maxReplicaCount: 30
-  cooldownPeriod: 60
-  triggers:
-    - type: gcp-pubsub
-      metadata:
-        subscriptionName: notification-worker-sub
-        subscriptionSize: "100"   # scale up when backlog > 100 msgs
-        credentialsFromEnv: GOOGLE_APPLICATION_CREDENTIALS</pre>
-
-    <div class="callout note">
-      <div class="callout-label">Note on Autopilot + KEDA</div>
-      GKE Autopilot supports KEDA via the GKE Add-on. Nodes are provisioned as pods are scheduled, so the scale-from-zero behaviour works correctly — Autopilot provisions a node when KEDA spins up a new pod. Scale-to-zero is also supported, which eliminates idle worker costs during quiet periods.
-    </div>
   </div>
 
   <div class="subsection">
@@ -730,7 +653,7 @@ spec:
 
     <pre># charts/marketplace-service/values.yaml  (what a service team sets)
 image:
-  repository: europe-west1-docker.pkg.dev/my-project/marketplace/order-service
+  repository: europe-west1-docker.pkg.dev/mms-prod/marketplace/order-service
   tag: abc1234
 
 service:
@@ -750,16 +673,13 @@ envFromSecrets:
 
 resources:
   preset: api   # maps to the resource defaults in the table above
-
-healthCheck:
-  path: /health
-  port: 3000</pre>
+</pre>
 
     <p>The chart handles everything else: anti-affinity rules, topology spread constraints for zone distribution, the default NetworkPolicy allowing only intra-namespace + ingress-controller traffic, the ServiceAccount linked to Workload Identity, and the PodDisruptionBudget ensuring at least one replica stays up during node drain.</p>
 
     <div class="callout decision">
       <div class="callout-label">Decision: Helm chart over CRD-based platform</div>
-      Tools like Crossplane's OAM or KubeVela provide a richer abstraction layer. For 15 services and a small platform team, the added CRD management overhead and learning curve is not justified. A well-designed Helm chart with sensible defaults gets 95% of the value with 20% of the complexity.
+      I like to keep tooling as lean as possible. There are probably other tools that could make life slightly easier, however, for 15 services and a small platform team, a well designed Helm chart with sensible defaults gets 95% of the value with 20% of the complexity.
     </div>
   </div>
 
@@ -772,14 +692,19 @@ healthCheck:
       </thead>
       <tbody>
         <tr>
+          <td>Admission webhook for resource limits</td>
+          <td><span class="tag tag-red">no</span></td>
+          <td>Requiring CPU limits creates throttling bugs. A webhook that blocks deployment without a CPU limit will cause incidents.</td>
+        </tr>
+        <tr>
           <td>ResourceQuota per namespace</td>
           <td><span class="tag tag-green">yes</span></td>
           <td>Prevents one misbehaving service from consuming all cluster resources. Set generously enough not to block normal operations.</td>
         </tr>
         <tr>
-          <td>LimitRange (default requests)</td>
-          <td><span class="tag tag-green">yes</span></td>
-          <td>Ensures any pod that somehow bypasses the Helm chart still gets scheduled with a request. Safety net only.</td>
+          <td>Pod Security Standards/Admission (restricted)</td>
+          <td><span class="tag tag-orange">warn mode</span></td>
+          <td>Start in warn mode, fix violations, then enforce. Don't enforce before auditing as it will break services silently at deploy time.</td>
         </tr>
         <tr>
           <td>Network policies (default deny)</td>
@@ -787,34 +712,13 @@ healthCheck:
           <td>Default deny-all with explicit allow for intra-namespace and ingress controller. Workers that need to reach Redis or Pub/Sub get explicit egress rules.</td>
         </tr>
         <tr>
-          <td>Non-root containers</td>
+          <td>OPA/Gatekeeper</td>
           <td><span class="tag tag-green">yes</span></td>
-          <td>Enforced via OPA/Gatekeeper policy. Low-friction for NestJS — just set <code>USER node</code> in the Dockerfile.</td>
-        </tr>
-        <tr>
-          <td>Read-only root filesystem</td>
-          <td><span class="tag tag-orange">selective</span></td>
-          <td>Good for stateless services but NestJS sometimes writes temp files. Apply where easy; don't break services over it.</td>
-        </tr>
-        <tr>
-          <td>Pod Security Standards (restricted)</td>
-          <td><span class="tag tag-orange">warn mode</span></td>
-          <td>Start in warn mode, fix violations, then enforce. Don't enforce before auditing — it will break services silently at deploy time.</td>
-        </tr>
-        <tr>
-          <td>OPA/Gatekeeper for image registry</td>
-          <td><span class="tag tag-green">yes</span></td>
-          <td>Only images from the internal Artifact Registry are allowed. Prevents accidental use of public images in prod.</td>
-        </tr>
-        <tr>
-          <td>Admission webhook for resource limits</td>
-          <td><span class="tag tag-red">no</span></td>
-          <td>Requiring CPU limits creates throttling bugs. The Helm chart defaults are the right lever. A webhook that blocks deployment without a CPU limit will cause incidents.</td>
-        </tr>
-        <tr>
-          <td>mTLS between services (Istio/Linkerd)</td>
-          <td><span class="tag tag-red">skip now</span></td>
-          <td>Service mesh adds significant operational complexity. For a marketplace running inside a private GKE cluster with NetworkPolicies, the security uplift doesn't justify the overhead for the team size.</td>
+          <td><ul>
+            <li>Only images from the internal Artifact Registry are allowed.</li>
+            <li>No type: Loadbalancer</li>
+          </ul>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -832,7 +736,7 @@ healthCheck:
 
   <div class="subsection">
     <h3>Context &amp; Problem</h3>
-    <p>The three service categories have fundamentally different risk profiles. A broken worker that processes payments differently than expected is a different kind of problem from a broken frontend header component. Deploying all 15 services the same way is leaving risk on the table in one direction and adding unnecessary complexity in another.</p>
+    <p>The three service categories have fundamentally different risk profiles. A broken worker that processes payments differently than expected is a different kind of problem from a broken frontend component. Deploying all 15 services the same way is risky but this could also add unnecessary complexity.</p>
   </div>
 
   <div class="subsection">
@@ -899,20 +803,6 @@ healthCheck:
     <h4>Workers — Rolling with graceful drain</h4>
     <p>Workers processing Pub/Sub messages or BullMQ jobs must never be killed mid-job. The implementation uses a <code>preStop</code> lifecycle hook that pauses new message consumption and waits for in-flight jobs to complete, combined with a <code>terminationGracePeriodSeconds</code> long enough to cover the maximum job duration. This is usually 60–120 seconds for a marketplace worker. SIGTERM is the signal to drain, not to abort.</p>
 
-    <pre># Worker Deployment excerpt
-spec:
-  template:
-    spec:
-      terminationGracePeriodSeconds: 120
-      containers:
-        - name: payment-worker
-          lifecycle:
-            preStop:
-              exec:
-                command: ["node", "scripts/drain.js"]  # sets a DRAINING flag, waits for queue empty
-          env:
-            - name: GRACEFUL_SHUTDOWN_TIMEOUT_MS
-              value: "115000"</pre>
   </div>
 
   <div class="subsection">
@@ -923,18 +813,17 @@ spec:
 
     <div class="callout decision">
       <div class="callout-label">Decision: Runbook over tooling</div>
-      Fancy rollback UIs (ArgoCD rollback button, custom Slack bots) are tempting but add complexity and failure modes. A written runbook with two clear paths — slow/clean via GitOps PR, fast/dirty via kubectl undo + follow-up PR — is more reliable and easier to execute under stress. On-call engineers should practice it in the non-prod environments quarterly.
+      Like I mentioned before, I prefer keeping tooling lean. Fancy rollback UIs (ArgoCD rollback button, custom Slack bots) are tempting but add complexity and failure modes. A written runbook with two clear paths is more reliable and easier to execute under stress. On-call engineers should practice it in the non-prod environments quarterly.
     </div>
   </div>
 
   <div class="subsection">
     <h3>Deployment Traceability</h3>
-    <p>Every running pod must be traceable back to a commit and PR. This is achieved through a combination of:</p>
+    <p>This links back to the image tagging I already mentioned. Every running pod must be traceable back to a commit and PR. This is achieved through a combination of:</p>
     <ul>
       <li>Image tag = commit SHA, always. Any pod's <code>image</code> field is a direct link to the source commit.</li>
       <li>Pod annotations set by the Helm chart: <code>deploy.marketplace/commit-sha</code>, <code>deploy.marketplace/deployed-by</code>, <code>deploy.marketplace/gitops-pr</code>.</li>
       <li>FluxCD's <code>last-applied-revision</code> annotation on HelmRelease objects, which records the GitOps repo commit that applied the change.</li>
-      <li>Grafana dashboard showing deployment events (from FluxCD metrics) overlaid on error rate and latency graphs. When a latency spike appears, the engineer can see "deployment at 14:32" on the same chart.</li>
     </ul>
   </div>
 </div>
@@ -955,7 +844,11 @@ spec:
 
   <div class="subsection">
     <h3>Where Secrets Live</h3>
-    <p>All secrets are stored in <strong>GCP Secret Manager</strong>. Each secret is namespaced by environment and service: <code>marketplace-prod/order-service/db-password</code>. This gives fine-grained IAM control — each service's Workload Identity service account can only read its own secrets — and provides automatic versioning, access logging, and rotation triggers via Cloud Pub/Sub notifications.</p>
+    <p>All secrets are stored in <strong>GCP Secret Manager</strong>. Each secret is named by service: <code>order-service/db-password</code>. No need for environment-specific naming due to one GCP project per environment. This gives fine-grained IAM control. Each service's Workload Identity service account can only read its own secrets and provides automatic versioning, access logging, and rotation triggers via Cloud Pub/Sub notifications.</p>
+  </div>
+  
+  <div class="subsection">
+    <h3>Injection into Workloads</h3>
 
     <div class="diagram">
       <svg viewBox="0 0 740 240" xmlns="http://www.w3.org/2000/svg" width="100%">
@@ -1008,35 +901,8 @@ spec:
       </svg>
       <div class="diagram-caption">Secret delivery flow. Secrets never touch the GitOps repo. ESO syncs from Secret Manager to in-cluster Kubernetes Secrets, which pods consume as env vars.</div>
     </div>
-  </div>
-
-  <div class="subsection">
-    <h3>Injection into Workloads</h3>
-    <p><strong>External Secrets Operator (ESO)</strong> runs in the cluster and watches <code>ExternalSecret</code> custom resources. Each service declares what secrets it needs; ESO fetches them from Secret Manager and creates or updates the corresponding Kubernetes Secret. The sync interval is configurable — 1 minute for most secrets, shorter if the service supports hot reload.</p>
-
-    <pre>apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: order-service-secrets
-  namespace: marketplace-api
-spec:
-  refreshInterval: 1m
-  secretStoreRef:
-    name: gcp-secret-store
-    kind: ClusterSecretStore
-  target:
-    name: order-service-secrets
-  data:
-    - secretKey: DB_PASSWORD
-      remoteRef:
-        key: marketplace-prod/order-service/db-password
-        version: latest
-    - secretKey: JWT_SECRET
-      remoteRef:
-        key: marketplace-prod/order-service/jwt-secret
-        version: latest</pre>
-
-    <p>Pods then consume these as environment variables via <code>envFrom</code>. For secrets that need file-based delivery (TLS certs, service account keys), ESO can also write them as mounted files. The Helm chart template handles this so service teams never touch the ESO resource directly — they declare keys in <code>values.yaml</code> and the chart generates the ExternalSecret.</p>
+    <p><strong>External Secrets Operator (ESO)</strong> runs in the cluster and watches <code>ExternalSecret</code> custom resources. Each service declares what secrets it needs. ESO fetches them from Secret Manager and creates or updates the corresponding Kubernetes Secret. The sync interval is configurable — 1 minute for most secrets, shorter if the service supports hot reload.</p>
+    <p>Pods then consume these as environment variables via <code>envFrom</code>. For secrets that need file-based delivery (TLS certs, service account keys), ESO can also write them as mounted files. The Helm chart template handles this so service teams never touch the ESO resource directly.<b> Teams declare keys in <code>values.yaml</code> and the chart generates the ExternalSecret.</b></p>
   </div>
 
   <div class="subsection">
@@ -1044,17 +910,16 @@ spec:
     <p>Secret rotation without downtime requires the application to support hot-reload or the infrastructure to perform a rolling restart. The approach depends on the secret type:</p>
 
     <ul>
-      <li><strong>Database credentials:</strong> MongoDB Atlas supports dual-active credentials during rotation. Add the new credential, update Secret Manager, ESO syncs the Kubernetes Secret within the refresh interval, a rolling restart picks up the new value, then revoke the old credential. Total downtime: zero.</li>
+      <li><strong>Database credentials:</strong> MongoDB Atlas supports dual-active credentials during rotation. Add the new credential, update Secret Manager, ESO syncs the Kubernetes Secret within the refresh interval, a rolling restart picks up the new value, then revoke the old credential. <span class="tag tag-green">Zero Downtime</span></li>
       <li><strong>API keys / JWT secrets:</strong> Services should read these from env vars, not cache at startup. If they do cache, a rolling restart is triggered automatically by an annotation change on the Deployment (the Helm chart can include a hash of the secret as an annotation, which changes when the secret rotates, triggering a rollout).</li>
       <li><strong>Automatic rotation triggers:</strong> Secret Manager supports Pub/Sub notifications on secret versions. A Cloud Function (or Cloud Run job) subscribes to rotation events, updates the Kubernetes Secret directly via the ESO sync, and optionally triggers a rolling restart via the Kubernetes API if the service can't hot-reload.</li>
     </ul>
 
     <div class="callout skip">
       <div class="callout-label">What I'd skip</div>
-      HashiCorp Vault is a common recommendation but adds a significant operational component — Vault clusters, HA configuration, unsealing. GCP Secret Manager provides equivalent functionality for a GCP-native stack with zero operational overhead. Vault makes sense if you have multi-cloud requirements or need its dynamic secret generation capabilities (short-lived database credentials). Neither applies here.
+      I currently use HashiCorp Vault and it's a common recommendation, but adds a significant operational component. GCP Secret Manager provides equivalent functionality for a GCP-native stack with zero operational overhead. Vault makes sense if you have multi-cloud requirements or need its dynamic secret generation capabilities (short-lived database credentials). Neither applies here.
+      SOPS + Age for encrypting secrets in the GitOps repo is also skipped.
     </div>
-
-    <p>SOPS + Age for encrypting secrets in the GitOps repo is also skipped. It solves the "don't commit plaintext" problem but creates new problems: secret values are still in git history, key management is manual, and rotation requires a PR. ESO + Secret Manager is cleaner end-to-end.</p>
   </div>
 </div>
 
@@ -1069,7 +934,7 @@ spec:
 
   <div class="subsection">
     <h3>Context &amp; Problem</h3>
-    <p>The failure mode for platform teams is becoming a bottleneck. If engineers need to open a ticket to change a replica count, add an environment variable, or investigate a production log, the platform team spends its time on toil instead of leverage. The goal is to define a clear boundary: what service teams own, what the platform team owns, and what neither team should need to touch manually.</p>
+    <p>Platform teams that own too much become a bottleneck for the engineers they're supposed to support. If engineers need to open a ticket to change a replica count, add an environment variable, or investigate a production log, <b> the platform team spends its time on meanial tasks instead of improving the product</b>. The goal is to define a clear boundary: what service teams own, what the platform team owns, and what neither team should need to touch manually.</p>
   </div>
 
   <div class="subsection">
@@ -1083,7 +948,7 @@ spec:
         <tr>
           <td>Scaling configuration</td>
           <td>Edit <code>values.yaml</code> in GitOps repo, open PR</td>
-          <td>HPA min/max and target CPU are in the values file. Teams own these.</td>
+          <td>HPA min/max and target CPU are in the values file. Teams own these.*</td>
         </tr>
         <tr>
           <td>Environment variables (non-secret)</td>
@@ -1101,11 +966,6 @@ spec:
           <td>Service teams have read access to their namespace's logs. No tickets needed.</td>
         </tr>
         <tr>
-          <td>Feature flags</td>
-          <td>Dedicated feature flag service (e.g. Unleash, or LaunchDarkly)</td>
-          <td>Entirely outside Kubernetes. Flags are changed by the owning team in the flag UI.</td>
-        </tr>
-        <tr>
           <td>Triggering a rollback</td>
           <td>Revert GitOps PR or <code>kubectl rollout undo</code> via runbook</td>
           <td>All on-call engineers have the necessary RBAC permissions.</td>
@@ -1115,14 +975,13 @@ spec:
           <td>Grafana (read access for all engineers)</td>
           <td>Service-level dashboards are pre-provisioned by the platform team for the common cases.</td>
         </tr>
-        <tr>
-          <td>Running one-off jobs</td>
-          <td>Kubernetes Job via <code>kubectl create job</code> or a CI workflow</td>
-          <td>Templated via the monorepo — engineers run <code>nx run order-service:migration</code>.</td>
-        </tr>
       </tbody>
     </table>
   </div>
+    <div class="callout tradeoff">
+      <div class="callout-label">Feature Flags?</div>
+      I noticed Feature Flags were mentioned. Feature flags are part of the application logic, not the platform configuration. If the platform team owns the feature flag system, then service teams need to involve them for any new flag, which creates friction and delays. Instead, I prefer to provide a recommended open-source feature flag library (like Unleash or Flagsmith) that teams can integrate into their codebase independently. 
+    </div>
 
   <div class="subsection">
     <h3>What the Platform Team Owns</h3>
@@ -1130,7 +989,7 @@ spec:
       <li>Cluster provisioning and upgrades (Terraform + GKE channel management)</li>
       <li>The shared Helm chart and its defaults</li>
       <li>Namespace creation and IAM/RBAC setup for new services</li>
-      <li>Network policies and admission policies</li>
+      <li>Network policies, admission policies and *Resource quotas </li>
       <li>The observability stack (Prometheus, Grafana, alerting rules)</li>
       <li>Secret Manager structure and GSA permission templates</li>
       <li>KEDA and ESO operator upgrades</li>
@@ -1139,7 +998,7 @@ spec:
 
     <div class="callout note">
       <div class="callout-label">Boundary principle</div>
-      The platform team owns the <em>rules of the game</em>, not the moves. If a service team needs the platform team to change a replica count or add an env var, that's a platform failure, not a normal workflow. The test: can a new service be deployed entirely without a Slack message to the platform team? If not, fix the self-service gap.
+      If a service team needs the platform team to change a replica count or add an env var, that's a platform failure, not a normal workflow. The test: can a new service be deployed entirely without a Slack message to the platform team? If not, fix the self-service gap.
     </div>
   </div>
 
@@ -1153,7 +1012,7 @@ npx nx generate @marketplace/service-generator:service \
   --type=api \
   --port=3001</pre>
 
-    <p>This generator outputs:</p>
+    <p>This generator should output:</p>
     <ul>
       <li><code>apps/inventory-service/</code> — NestJS scaffold with health endpoint</li>
       <li><code>apps/inventory-service/Dockerfile</code></li>
