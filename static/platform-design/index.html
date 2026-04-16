@@ -1018,7 +1018,6 @@ npx nx generate @marketplace/service-generator:service \
   <div class="subsection">
     <h3>What to Monitor and Alert On</h3>
 
-    <p>Alerts are derived from service-level objectives, not from infrastructure metrics. Infrastructure metrics (CPU, memory) are in dashboards for debugging but not in alert routing.</p>
     <p><span class="tag tag-red">high priority</span> = Immediate action required (eg. PagerDuty)</p>
     <span class="tag tag-orange">medium priority</span> and <span class="tag tag-green">low priority</span> = Investigation needed, but not urgent (eg. Slack)</span>
 
@@ -1117,16 +1116,16 @@ npx nx generate @marketplace/service-generator:service \
       <div class="diagram-caption">Latency spike debugging workflow. Each step uses a specific tool; the trace ID is the thread connecting them.</div>
     </div>
 
-    <p>The key enabler is distributed tracing. NestJS services instrument with OpenTelemetry, traces go to GCP Cloud Trace (or Grafana Tempo if you prefer OSS). Every log line includes the trace ID from the incoming request. When Grafana shows a latency spike on service A, the engineer opens Cloud Trace, filters by high-latency traces on service A, picks one, and follows the span waterfall to find the slow dependency — usually a database query, a downstream service, or a Redis miss. The log correlation by trace ID then shows the actual error message or slow query.</p>
+    <p>Every log line includes the trace ID from the incoming request. When Grafana shows a latency spike on a service, the engineer opens Cloud Trace, filters by high-latency traces on the service, picks one, and follows the span waterfall to find the slow dependency. <strong>The log correlation by trace ID then shows the actual error message or slow query.</strong></p>
 
-    <p>The Grafana deployment marker overlay is the second-most important tool. It show s a vertical line on every metric chart when a deployment event occurs. If the latency spike started at 14:32 and there's a deployment marker at 14:31, the root cause is identified in seconds rather than minutes of bisection.</p>
+    <p>The Grafana deployment marker overlay shows a vertical line on every metric chart when a deployment event occurs.</p>
   </div>
 
   <div class="subsection">
     <h3>Sustainable On-Call for a Small Team</h3>
     <ul>
       <li><strong>Alert ownership:</strong> every alert is owned by a specific team, not "the platform team." If an alert fires with no clear owner, it gets reviewed in the weekly ops meeting and either assigned or deleted.</li>
-      <li><strong>Runbooks next to alerts:</strong> every PagerDuty alert has a runbook link in its body. Not a wiki page — a short document with: what this alert means, the first three things to check, how to mitigate, and who to escalate to. Engineers update runbooks after incidents.</li>
+      <li><strong>Runbooks next to alerts:</strong> every PagerDuty alert has a runbook link in its body. A short document with: what this alert means, the first three things to check, how to mitigate, and who to escalate to. Engineers update runbooks after incidents.</li>
       <li><strong>Post-mortems, not blame:</strong> blameless post-mortems with action items filed as tickets. The goal is making the next on-call shift easier, not reviewing what went wrong.</li>
       <li><strong>Noise reviews:</strong> monthly review of alert volume. Any alert that fires more than once without resulting in an action gets its threshold adjusted or removed.</li>
       <li><strong>Alert inhibition:</strong> if the cluster is in a maintenance window or a known degraded state, alerts are suppressed at the Alertmanager level rather than waking people up for known issues.</li>
