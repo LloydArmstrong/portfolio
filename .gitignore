@@ -10,3 +10,6 @@ package-lock.json
 
 .vscode/
 .claude
+# Brag inbox (private notes, processed monthly)
+brag/inbox.md
+brag/inbox-archive/

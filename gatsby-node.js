@@ -17,6 +17,11 @@ exports.createSchemaCustomization = ({ actions }) => {
       slug: String
       draft: Boolean
       tags: [String]
+      theme: String
+      impact: String
+      company: String
+      skills: [String]
+      highlight: Boolean
     }
     type MarkdownRemark implements Node {
       frontmatter: MarkdownRemarkFrontmatter
