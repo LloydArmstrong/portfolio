@@ -11,14 +11,15 @@ import { email } from '@config';
 const UPDATED = '12 November 2026';
 
 const StyledMain = styled.main`
-  max-width: 760px;
-
   header {
     margin-bottom: 40px;
   }
 
-  // The global 100px section padding is for the homepage; headings space this page.
+  // The global centred 1000px section with 100px padding is for the homepage;
+  // here sections align with the header and headings provide the spacing.
   section {
+    max-width: none;
+    margin: 0;
     padding: 0;
   }
 
@@ -34,8 +35,11 @@ const StyledMain = styled.main`
     font-size: var(--fz-xl);
   }
 
+  // Width comes from the site-wide responsive main padding; cap the measure so
+  // lines stay readable on wide screens.
   p,
   li {
+    max-width: 80ch;
     color: var(--light-slate);
     line-height: 1.6;
   }
@@ -53,6 +57,7 @@ const StyledMain = styled.main`
   }
 
   .summary {
+    width: fit-content;
     padding: 1.5rem 1.75rem;
     border-radius: var(--border-radius);
     background-color: var(--light-navy);
